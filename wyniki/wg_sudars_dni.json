@@ -1,0 +1,83 @@
+{
+  "model": "modele_wg_sudars/model.pt",
+  "dane": "zbior_lotnicze/dataset/data.yaml",
+  "split": "test",
+  "wejscie": 1280,
+  "mAP50": 0.6592,
+  "mAP50_95": 0.3448,
+  "precyzja": 0.7959,
+  "czulosc": 0.5797,
+  "per_klasa": {
+    "chwast": {
+      "precyzja": 0.7959,
+      "czulosc": 0.5797,
+      "mAP50": 0.6592,
+      "mAP50_95": 0.3448
+    }
+  },
+  "wedlug_rozmiaru": {
+    "male": {
+      "obiektow": 1360,
+      "znalezionych": 870,
+      "czulosc": 0.6397
+    },
+    "srednie": {
+      "obiektow": 256,
+      "znalezionych": 218,
+      "czulosc": 0.8516
+    },
+    "duze": {
+      "obiektow": 12,
+      "znalezionych": 9,
+      "czulosc": 0.75
+    },
+    "prog": 0.15
+  },
+  "wedlug_dni": {
+    "2023-05-25": {
+      "prog": 0.15,
+      "trafione": 90,
+      "falszywe": 111,
+      "pominiete": 242,
+      "precyzja": 0.4478,
+      "czulosc": 0.2711,
+      "obrazow": 8
+    },
+    "2023-05-30": {
+      "prog": 0.15,
+      "trafione": 309,
+      "falszywe": 214,
+      "pominiete": 117,
+      "precyzja": 0.5908,
+      "czulosc": 0.7254,
+      "obrazow": 8
+    },
+    "2023-06-06": {
+      "prog": 0.15,
+      "trafione": 590,
+      "falszywe": 266,
+      "pominiete": 126,
+      "precyzja": 0.6893,
+      "czulosc": 0.824,
+      "obrazow": 8
+    },
+    "2023-06-15": {
+      "prog": 0.15,
+      "trafione": 108,
+      "falszywe": 188,
+      "pominiete": 46,
+      "precyzja": 0.3649,
+      "czulosc": 0.7013,
+      "obrazow": 2
+    },
+    "razem": {
+      "prog": 0.15,
+      "trafione": 1097,
+      "falszywe": 779,
+      "pominiete": 531,
+      "precyzja": 0.5848,
+      "czulosc": 0.6738,
+      "obrazow": 26
+    }
+  }
+}

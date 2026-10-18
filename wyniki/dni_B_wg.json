@@ -1,0 +1,56 @@
+{
+  "model": "modele_dni_B/model.pt",
+  "dane": "zbior_dni_0525/dataset/data.yaml",
+  "split": "test",
+  "wejscie": 1280,
+  "mAP50": 0.1159,
+  "mAP50_95": 0.031,
+  "precyzja": 0.2549,
+  "czulosc": 0.2161,
+  "per_klasa": {
+    "chwast": {
+      "precyzja": 0.2549,
+      "czulosc": 0.2161,
+      "mAP50": 0.1159,
+      "mAP50_95": 0.031
+    }
+  },
+  "wedlug_rozmiaru": {
+    "male": {
+      "obiektow": 1328,
+      "znalezionych": 318,
+      "czulosc": 0.2395
+    },
+    "srednie": {
+      "obiektow": 0,
+      "znalezionych": 0,
+      "czulosc": null
+    },
+    "duze": {
+      "obiektow": 0,
+      "znalezionych": 0,
+      "czulosc": null
+    },
+    "prog": 0.15
+  },
+  "wedlug_dni": {
+    "2023-05-25": {
+      "prog": 0.15,
+      "trafione": 318,
+      "falszywe": 1100,
+      "pominiete": 1010,
+      "precyzja": 0.2243,
+      "czulosc": 0.2395,
+      "obrazow": 48
+    },
+    "razem": {
+      "prog": 0.15,
+      "trafione": 318,
+      "falszywe": 1100,
+      "pominiete": 1010,
+      "precyzja": 0.2243,
+      "czulosc": 0.2395,
+      "obrazow": 48
+    }
+  }
+}

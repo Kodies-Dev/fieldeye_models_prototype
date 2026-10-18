@@ -1,0 +1,61 @@
+{
+  "detektor": "YOLO(modele_sezon_nadprob/model.pt)",
+  "split": "test",
+  "obrazow": 26,
+  "AP50": 0.69,
+  "przy_progu": {
+    "prog": 0.15,
+    "trafione": 1131,
+    "falszywe": 760,
+    "pominiete": 497,
+    "precyzja": 0.5981,
+    "czulosc": 0.6947
+  },
+  "wedlug_dni": {
+    "2023-05-25": {
+      "prog": 0.15,
+      "trafione": 101,
+      "falszywe": 154,
+      "pominiete": 231,
+      "precyzja": 0.3961,
+      "czulosc": 0.3042,
+      "obrazow": 8
+    },
+    "2023-05-30": {
+      "prog": 0.15,
+      "trafione": 319,
+      "falszywe": 225,
+      "pominiete": 107,
+      "precyzja": 0.5864,
+      "czulosc": 0.7488,
+      "obrazow": 8
+    },
+    "2023-06-06": {
+      "prog": 0.15,
+      "trafione": 605,
+      "falszywe": 243,
+      "pominiete": 111,
+      "precyzja": 0.7134,
+      "czulosc": 0.845,
+      "obrazow": 8
+    },
+    "2023-06-15": {
+      "prog": 0.15,
+      "trafione": 106,
+      "falszywe": 138,
+      "pominiete": 48,
+      "precyzja": 0.4344,
+      "czulosc": 0.6883,
+      "obrazow": 2
+    },
+    "razem": {
+      "prog": 0.15,
+      "trafione": 1131,
+      "falszywe": 760,
+      "pominiete": 497,
+      "precyzja": 0.5981,
+      "czulosc": 0.6947,
+      "obrazow": 26
+    }
+  }
+}

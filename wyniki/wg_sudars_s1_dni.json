@@ -1,0 +1,65 @@
+{
+  "model": "modele_wg_sudars_s1/model.pt",
+  "dane": "zbior_lotnicze/dataset/data.yaml",
+  "split": "test",
+  "wejscie": 1280,
+  "mAP50": 0.6605,
+  "mAP50_95": 0.3491,
+  "precyzja": 0.7633,
+  "czulosc": 0.5872,
+  "per_klasa": {
+    "chwast": {
+      "precyzja": 0.7633,
+      "czulosc": 0.5872,
+      "mAP50": 0.6605,
+      "mAP50_95": 0.3491
+    }
+  },
+  "wedlug_dni": {
+    "2023-05-25": {
+      "prog": 0.15,
+      "trafione": 92,
+      "falszywe": 120,
+      "pominiete": 240,
+      "precyzja": 0.434,
+      "czulosc": 0.2771,
+      "obrazow": 8
+    },
+    "2023-05-30": {
+      "prog": 0.15,
+      "trafione": 303,
+      "falszywe": 208,
+      "pominiete": 123,
+      "precyzja": 0.593,
+      "czulosc": 0.7113,
+      "obrazow": 8
+    },
+    "2023-06-06": {
+      "prog": 0.15,
+      "trafione": 584,
+      "falszywe": 273,
+      "pominiete": 132,
+      "precyzja": 0.6814,
+      "czulosc": 0.8156,
+      "obrazow": 8
+    },
+    "2023-06-15": {
+      "prog": 0.15,
+      "trafione": 103,
+      "falszywe": 157,
+      "pominiete": 51,
+      "precyzja": 0.3962,
+      "czulosc": 0.6688,
+      "obrazow": 2
+    },
+    "razem": {
+      "prog": 0.15,
+      "trafione": 1082,
+      "falszywe": 758,
+      "pominiete": 546,
+      "precyzja": 0.588,
+      "czulosc": 0.6646,
+      "obrazow": 26
+    }
+  }
+}

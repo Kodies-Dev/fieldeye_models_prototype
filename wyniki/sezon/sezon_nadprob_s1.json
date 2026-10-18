@@ -1,0 +1,97 @@
+{
+  "model": "modele_sezon_nadprob_s1/model.pt",
+  "jeden_prog": {
+    "2023-05-25": {
+      "prog": 0.15,
+      "trafione": 95,
+      "falszywe": 182,
+      "pominiete": 237,
+      "precyzja": 0.343,
+      "czulosc": 0.2861,
+      "obrazow": 8
+    },
+    "2023-05-30": {
+      "prog": 0.15,
+      "trafione": 317,
+      "falszywe": 215,
+      "pominiete": 109,
+      "precyzja": 0.5959,
+      "czulosc": 0.7441,
+      "obrazow": 8
+    },
+    "2023-06-06": {
+      "prog": 0.15,
+      "trafione": 592,
+      "falszywe": 288,
+      "pominiete": 124,
+      "precyzja": 0.6727,
+      "czulosc": 0.8268,
+      "obrazow": 8
+    },
+    "2023-06-15": {
+      "prog": 0.15,
+      "trafione": 106,
+      "falszywe": 139,
+      "pominiete": 48,
+      "precyzja": 0.4327,
+      "czulosc": 0.6883,
+      "obrazow": 2
+    },
+    "razem": {
+      "prog": 0.15,
+      "trafione": 1110,
+      "falszywe": 824,
+      "pominiete": 518,
+      "precyzja": 0.5739,
+      "czulosc": 0.6818,
+      "obrazow": 26
+    }
+  },
+  "progi_dni": {
+    "2023-05-25": {
+      "prog": 0.12,
+      "trafione": 107,
+      "falszywe": 220,
+      "pominiete": 225,
+      "precyzja": 0.3272,
+      "czulosc": 0.3223,
+      "obrazow": 8
+    },
+    "2023-05-30": {
+      "prog": 0.1,
+      "trafione": 326,
+      "falszywe": 326,
+      "pominiete": 100,
+      "precyzja": 0.5,
+      "czulosc": 0.7653,
+      "obrazow": 8
+    },
+    "2023-06-06": {
+      "prog": 0.1,
+      "trafione": 602,
+      "falszywe": 432,
+      "pominiete": 114,
+      "precyzja": 0.5822,
+      "czulosc": 0.8408,
+      "obrazow": 8
+    },
+    "2023-06-15": {
+      "prog": 0.08,
+      "trafione": 117,
+      "falszywe": 252,
+      "pominiete": 37,
+      "precyzja": 0.3171,
+      "czulosc": 0.7597,
+      "obrazow": 2
+    },
+    "razem": {
+      "trafione": 1152,
+      "falszywe": 1230,
+      "pominiete": 476,
+      "prog": "wg dni",
+      "obrazow": 26,
+      "precyzja": 0.4836,
+      "czulosc": 0.7076
+    }
+  }
+}

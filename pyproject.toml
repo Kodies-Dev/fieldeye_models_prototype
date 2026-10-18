@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fieldeye"
+version = "0.1.0"
+description = "FIELDEYE: wykrywanie chwastow z drona - skladanie zdjec, normalizacja danych, trening i misja"
+requires-python = ">=3.9"
+dependencies = ["opencv-contrib-python>=4.8,<5.0", "numpy>=1.24,<3.0"]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.4"]
+
+[project.scripts]
+stitchlive = "stitchlive.cli:main"
+fieldeye-mission = "mission.cli:main"
+fieldeye-models = "models.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["stitchlive*", "mission*", "models*", "normalization*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

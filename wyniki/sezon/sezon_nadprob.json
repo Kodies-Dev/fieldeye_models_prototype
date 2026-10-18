@@ -1,0 +1,97 @@
+{
+  "model": "modele_sezon_nadprob/model.pt",
+  "jeden_prog": {
+    "2023-05-25": {
+      "prog": 0.15,
+      "trafione": 101,
+      "falszywe": 154,
+      "pominiete": 231,
+      "precyzja": 0.3961,
+      "czulosc": 0.3042,
+      "obrazow": 8
+    },
+    "2023-05-30": {
+      "prog": 0.15,
+      "trafione": 319,
+      "falszywe": 225,
+      "pominiete": 107,
+      "precyzja": 0.5864,
+      "czulosc": 0.7488,
+      "obrazow": 8
+    },
+    "2023-06-06": {
+      "prog": 0.15,
+      "trafione": 605,
+      "falszywe": 243,
+      "pominiete": 111,
+      "precyzja": 0.7134,
+      "czulosc": 0.845,
+      "obrazow": 8
+    },
+    "2023-06-15": {
+      "prog": 0.15,
+      "trafione": 106,
+      "falszywe": 138,
+      "pominiete": 48,
+      "precyzja": 0.4344,
+      "czulosc": 0.6883,
+      "obrazow": 2
+    },
+    "razem": {
+      "prog": 0.15,
+      "trafione": 1131,
+      "falszywe": 760,
+      "pominiete": 497,
+      "precyzja": 0.5981,
+      "czulosc": 0.6947,
+      "obrazow": 26
+    }
+  },
+  "progi_dni": {
+    "2023-05-25": {
+      "prog": 0.08,
+      "trafione": 122,
+      "falszywe": 314,
+      "pominiete": 210,
+      "precyzja": 0.2798,
+      "czulosc": 0.3675,
+      "obrazow": 8
+    },
+    "2023-05-30": {
+      "prog": 0.12,
+      "trafione": 324,
+      "falszywe": 277,
+      "pominiete": 102,
+      "precyzja": 0.5391,
+      "czulosc": 0.7606,
+      "obrazow": 8
+    },
+    "2023-06-06": {
+      "prog": 0.12,
+      "trafione": 612,
+      "falszywe": 301,
+      "pominiete": 104,
+      "precyzja": 0.6703,
+      "czulosc": 0.8547,
+      "obrazow": 8
+    },
+    "2023-06-15": {
+      "prog": 0.1,
+      "trafione": 109,
+      "falszywe": 217,
+      "pominiete": 45,
+      "precyzja": 0.3344,
+      "czulosc": 0.7078,
+      "obrazow": 2
+    },
+    "razem": {
+      "trafione": 1167,
+      "falszywe": 1109,
+      "pominiete": 461,
+      "prog": "wg dni",
+      "obrazow": 26,
+      "precyzja": 0.5127,
+      "czulosc": 0.7168
+    }
+  }
+}

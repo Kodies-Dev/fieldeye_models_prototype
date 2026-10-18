@@ -1,0 +1,61 @@
+{
+  "detektor": "TTA(YOLO(modele_wg_sudars/model.pt))",
+  "split": "test",
+  "obrazow": 26,
+  "AP50": 0.7006,
+  "przy_progu": {
+    "prog": 0.15,
+    "trafione": 1105,
+    "falszywe": 534,
+    "pominiete": 523,
+    "precyzja": 0.6742,
+    "czulosc": 0.6787
+  },
+  "wedlug_dni": {
+    "2023-05-25": {
+      "prog": 0.15,
+      "trafione": 100,
+      "falszywe": 92,
+      "pominiete": 232,
+      "precyzja": 0.5208,
+      "czulosc": 0.3012,
+      "obrazow": 8
+    },
+    "2023-05-30": {
+      "prog": 0.15,
+      "trafione": 302,
+      "falszywe": 140,
+      "pominiete": 124,
+      "precyzja": 0.6833,
+      "czulosc": 0.7089,
+      "obrazow": 8
+    },
+    "2023-06-06": {
+      "prog": 0.15,
+      "trafione": 590,
+      "falszywe": 174,
+      "pominiete": 126,
+      "precyzja": 0.7723,
+      "czulosc": 0.824,
+      "obrazow": 8
+    },
+    "2023-06-15": {
+      "prog": 0.15,
+      "trafione": 113,
+      "falszywe": 128,
+      "pominiete": 41,
+      "precyzja": 0.4689,
+      "czulosc": 0.7338,
+      "obrazow": 2
+    },
+    "razem": {
+      "prog": 0.15,
+      "trafione": 1105,
+      "falszywe": 534,
+      "pominiete": 523,
+      "precyzja": 0.6742,
+      "czulosc": 0.6787,
+      "obrazow": 26
+    }
+  }
+}

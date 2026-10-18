@@ -1,0 +1,35 @@
+{
+  "model": "modele_sudars_lr01/model.pt",
+  "dane": "zbior_lotnicze/dataset/data.yaml",
+  "split": "test",
+  "wejscie": 1280,
+  "mAP50": 0.6235,
+  "mAP50_95": 0.3278,
+  "precyzja": 0.7258,
+  "czulosc": 0.5504,
+  "per_klasa": {
+    "chwast": {
+      "precyzja": 0.7258,
+      "czulosc": 0.5504,
+      "mAP50": 0.6235,
+      "mAP50_95": 0.3278
+    }
+  },
+  "wedlug_rozmiaru": {
+    "male": {
+      "obiektow": 1360,
+      "znalezionych": 785,
+      "czulosc": 0.5772
+    },
+    "srednie": {
+      "obiektow": 256,
+      "znalezionych": 196,
+      "czulosc": 0.7656
+    },
+    "duze": {
+      "obiektow": 12,
+      "znalezionych": 4,
+      "czulosc": 0.3333
+    }
+  }
+}

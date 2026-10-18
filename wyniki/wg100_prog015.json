@@ -1,0 +1,36 @@
+{
+  "model": "modele_wg100/model.pt",
+  "dane": "zbior_lotnicze/dataset/data.yaml",
+  "split": "test",
+  "wejscie": 1280,
+  "mAP50": 0.6513,
+  "mAP50_95": 0.3429,
+  "precyzja": 0.7353,
+  "czulosc": 0.5952,
+  "per_klasa": {
+    "chwast": {
+      "precyzja": 0.7353,
+      "czulosc": 0.5952,
+      "mAP50": 0.6513,
+      "mAP50_95": 0.3429
+    }
+  },
+  "wedlug_rozmiaru": {
+    "male": {
+      "obiektow": 1360,
+      "znalezionych": 836,
+      "czulosc": 0.6147
+    },
+    "srednie": {
+      "obiektow": 256,
+      "znalezionych": 216,
+      "czulosc": 0.8438
+    },
+    "duze": {
+      "obiektow": 12,
+      "znalezionych": 10,
+      "czulosc": 0.8333
+    },
+    "prog": 0.15
+  }
+}

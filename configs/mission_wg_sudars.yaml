@@ -1,0 +1,9 @@
+# Misja z modelem docelowym w PyTorch (.pt) - komputer z Pythonem i ultralytics.
+#   python -m mission.cli pelna zdjecia/ -o wynik_misji/ --config configs/mission_wg_sudars.yaml
+detekcja:
+  model: modele_wg_sudars/model.pt
+  prog_pewnosci: 0.15
+  wejscie_sieci: 1280      # tak model byl uczony
+  kafelkowanie: true       # zdjecia z kamery (~4000 px) ciete na kafelki
+  kafelek: 896
+  zakladka: 0.15

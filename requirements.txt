@@ -1,0 +1,35 @@
+# stitch-live - wszystkie zaleznosci w jednym pliku
+#   Windows:  py -m pip install -r requirements.txt
+#   macOS/Linux:  pip install -r requirements.txt
+
+# --- skladanie zdjec (stitchlive) ---
+# UWAGA: potrzebny pakiet CONTRIB - podstawowy opencv-python
+# nie zawiera modulu detail uzywanego przez skladacz.
+opencv-contrib-python>=4.8,<5.0
+numpy>=1.24,<3.0
+
+# --- GUI (streamlit run app.py) ---
+streamlit>=1.40
+Pillow>=10.0
+
+# --- misja: georeferencja i telemetria ---
+pyproj>=3.5       # uklady wspolrzednych (WGS84 <-> UTM)
+piexif>=1.1.3     # odczyt GPS z EXIF
+
+# --- normalizacja i modele: pliki konfiguracyjne ---
+PyYAML>=6.0       # taxonomy.yaml, data.yaml
+
+# --- modele: trening, ocena, eksport ---
+# Ciezkie (z PyTorchem kilka GB). Licencja AGPL-3.0 - sprawdz przed
+# wdrozeniem komercyjnym. torch instaluje sie sam jako zaleznosc.
+ultralytics>=8.0
+# eksport do ONNX (ultralytics doinstalowuje je sam przy pierwszym eksporcie)
+onnx>=1.12,<2.0
+onnxruntime
+onnxslim>=0.1.82
+# Hailo (Raspberry Pi 5 + AI HAT+): HailoRT i pakiet hailo_platform instaluje sie
+# na urzadzeniu przez apt (sudo apt install hailo-all), nie przez pip.
+# Kompilacja do .hef: Hailo AI Software Suite na Linuksie x86 (scripts/HAILO.md).
+
+# --- testy ---
+pytest>=7.4

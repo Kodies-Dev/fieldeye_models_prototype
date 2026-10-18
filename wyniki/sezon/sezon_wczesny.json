@@ -1,0 +1,97 @@
+{
+  "model": "modele_sezon_wczesny/model.pt",
+  "jeden_prog": {
+    "2023-05-25": {
+      "prog": 0.15,
+      "trafione": 84,
+      "falszywe": 102,
+      "pominiete": 248,
+      "precyzja": 0.4516,
+      "czulosc": 0.253,
+      "obrazow": 8
+    },
+    "2023-05-30": {
+      "prog": 0.15,
+      "trafione": 315,
+      "falszywe": 209,
+      "pominiete": 111,
+      "precyzja": 0.6011,
+      "czulosc": 0.7394,
+      "obrazow": 8
+    },
+    "2023-06-06": {
+      "prog": 0.15,
+      "trafione": 592,
+      "falszywe": 291,
+      "pominiete": 124,
+      "precyzja": 0.6704,
+      "czulosc": 0.8268,
+      "obrazow": 8
+    },
+    "2023-06-15": {
+      "prog": 0.15,
+      "trafione": 108,
+      "falszywe": 171,
+      "pominiete": 46,
+      "precyzja": 0.3871,
+      "czulosc": 0.7013,
+      "obrazow": 2
+    },
+    "razem": {
+      "prog": 0.15,
+      "trafione": 1099,
+      "falszywe": 773,
+      "pominiete": 529,
+      "precyzja": 0.5871,
+      "czulosc": 0.6751,
+      "obrazow": 26
+    }
+  },
+  "progi_dni": {
+    "2023-05-25": {
+      "prog": 0.05,
+      "trafione": 131,
+      "falszywe": 503,
+      "pominiete": 201,
+      "precyzja": 0.2066,
+      "czulosc": 0.3946,
+      "obrazow": 8
+    },
+    "2023-05-30": {
+      "prog": 0.08,
+      "trafione": 323,
+      "falszywe": 428,
+      "pominiete": 103,
+      "precyzja": 0.4301,
+      "czulosc": 0.7582,
+      "obrazow": 8
+    },
+    "2023-06-06": {
+      "prog": 0.1,
+      "trafione": 605,
+      "falszywe": 424,
+      "pominiete": 111,
+      "precyzja": 0.5879,
+      "czulosc": 0.845,
+      "obrazow": 8
+    },
+    "2023-06-15": {
+      "prog": 0.12,
+      "trafione": 109,
+      "falszywe": 210,
+      "pominiete": 45,
+      "precyzja": 0.3417,
+      "czulosc": 0.7078,
+      "obrazow": 2
+    },
+    "razem": {
+      "trafione": 1168,
+      "falszywe": 1565,
+      "pominiete": 460,
+      "prog": "wg dni",
+      "obrazow": 26,
+      "precyzja": 0.4274,
+      "czulosc": 0.7174
+    }
+  }
+}

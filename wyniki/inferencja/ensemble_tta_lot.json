@@ -1,0 +1,107 @@
+{
+  "model": [
+    "modele_wg_sudars/model.pt",
+    "modele_wg_sudars_s1/model.pt"
+  ],
+  "tta": true,
+  "prog": 0.15,
+  "zaklocenia": false,
+  "dni": {
+    "2023-05-25": {
+      "kadrow": 14,
+      "w_mozaice": 14,
+      "scalanie": {
+        "trafione": 26,
+        "pominiete": 70,
+        "falszywe": 60,
+        "czulosc": 0.2708,
+        "precyzja": 0.3023
+      },
+      "laczenie_widokow": {
+        "trafione": 30,
+        "pominiete": 66,
+        "falszywe": 84,
+        "czulosc": 0.3125,
+        "precyzja": 0.2632
+      },
+      "laczenie_z_glosowaniem": {
+        "trafione": 30,
+        "pominiete": 66,
+        "falszywe": 83,
+        "czulosc": 0.3125,
+        "precyzja": 0.2655
+      },
+      "niski_prog_z_glosowaniem": {
+        "trafione": 31,
+        "pominiete": 65,
+        "falszywe": 91,
+        "czulosc": 0.3229,
+        "precyzja": 0.2541
+      }
+    },
+    "2023-05-30": {
+      "kadrow": 14,
+      "w_mozaice": 14,
+      "scalanie": {
+        "trafione": 111,
+        "pominiete": 71,
+        "falszywe": 83,
+        "czulosc": 0.6099,
+        "precyzja": 0.5722
+      },
+      "laczenie_widokow": {
+        "trafione": 113,
+        "pominiete": 69,
+        "falszywe": 113,
+        "czulosc": 0.6209,
+        "precyzja": 0.5
+      },
+      "laczenie_z_glosowaniem": {
+        "trafione": 113,
+        "pominiete": 69,
+        "falszywe": 113,
+        "czulosc": 0.6209,
+        "precyzja": 0.5
+      },
+      "niski_prog_z_glosowaniem": {
+        "trafione": 113,
+        "pominiete": 69,
+        "falszywe": 118,
+        "czulosc": 0.6209,
+        "precyzja": 0.4892
+      }
+    },
+    "2023-06-06": {
+      "kadrow": 14,
+      "w_mozaice": 14,
+      "scalanie": {
+        "trafione": 304,
+        "pominiete": 102,
+        "falszywe": 136,
+        "czulosc": 0.7488,
+        "precyzja": 0.6909
+      },
+      "laczenie_widokow": {
+        "trafione": 291,
+        "pominiete": 115,
+        "falszywe": 119,
+        "czulosc": 0.7167,
+        "precyzja": 0.7098
+      },
+      "laczenie_z_glosowaniem": {
+        "trafione": 291,
+        "pominiete": 115,
+        "falszywe": 118,
+        "czulosc": 0.7167,
+        "precyzja": 0.7115
+      },
+      "niski_prog_z_glosowaniem": {
+        "trafione": 291,
+        "pominiete": 115,
+        "falszywe": 126,
+        "czulosc": 0.7167,
+        "precyzja": 0.6978
+      }
+    }
+  }
+}

@@ -1,0 +1,201 @@
+# Slownik gatunkow - jedno miejsce, w ktorym ustalamy, co jest czym.
+#
+# Kazdy gatunek ma klucz (nazwa lacinska z podkresleniami) i liste aliasow,
+# czyli wszystkich nazw, pod jakimi wystepuje w zbiorach zrodlowych.
+# Dopasowanie aliasow nie rozroznia wielkosci liter.
+#
+# w_polsce: jak czesto gatunek wystepuje w polskich uprawach. Gatunek, ktorego
+# u nas nie ma, nie ma sensu jako osobna klasa - patrz "zwin_do".
+#
+# zwin_do: gdy ustawione, gatunek trafia do klasy zbiorczej zamiast wlasnej.
+
+gatunki:
+
+  # ---------------- uprawy ----------------
+  zea_mays:
+    polska: kukurydza
+    rola: uprawa
+    w_polsce: uprawiana
+    aliasy: [ZEAMX, zea mays, maize, corn, kukurydza, weed_0, crop]
+
+  gossypium:
+    polska: bawelna
+    rola: uprawa
+    w_polsce: nie uprawiana
+    aliasy: [cotton, gossypium]
+
+  sorghum_bicolor:
+    polska: sorgo (uprawa)
+    rola: uprawa
+    w_polsce: uprawiana (rzadko)
+    aliasy: [SORVU, sorghum bicolor, sorghum, sorgo]
+
+  uprawa_inna:
+    polska: uprawa (klasa zbiorcza)
+    rola: uprawa
+    w_polsce: "-"
+    aliasy: [crop, uprawa, crop plant, cultivated plant]
+
+  beta_vulgaris:
+    polska: burak
+    rola: uprawa
+    w_polsce: uprawiana
+    aliasy: [BV, beta vulgaris, sugar beet, burak]
+
+  daucus_carota:
+    polska: marchew
+    rola: uprawa
+    w_polsce: uprawiana
+    aliasy: [DC, daucus carota, carrot, marchew]
+
+  cucurbita_pepo_pepo:
+    polska: cukinia
+    rola: uprawa
+    w_polsce: uprawiana
+    aliasy: [CPS, cucurbita pepo subsp. pepo, zucchini]
+
+  cucurbita_pepo:
+    polska: dynia
+    rola: uprawa
+    w_polsce: uprawiana
+    aliasy: [CP, cucurbita pepo, pumpkin]
+
+  raphanus_sativus:
+    polska: rzodkiewka
+    rola: uprawa
+    w_polsce: uprawiana
+    aliasy: [RSS, raphanus sativus var. sativus, radish]
+
+  raphanus_niger:
+    polska: rzodkiew czarna
+    rola: uprawa
+    w_polsce: uprawiana
+    aliasy: [RSN, raphanus sativus var. niger, black radish]
+
+  # ---------------- chwasty pospolite w Polsce ----------------
+  amaranthus_retroflexus:
+    polska: szarlat szorstki
+    rola: chwast
+    w_polsce: pospolity
+    aliasy: [AMARE, amaranthus retroflexus, amaranth, redroot pigweed, szarlat]
+
+  echinochloa_crus_galli:
+    polska: chwastnica jednostronna
+    rola: chwast
+    w_polsce: pospolity
+    aliasy: [ECHCG, echinochloa crus-galli, barnyard grass, barnyardgrass, chwastnica]
+
+  galinsoga_parviflora:
+    polska: zoltlica drobnokwiatowa
+    rola: chwast
+    w_polsce: pospolity
+    aliasy: [GP, GASPA, galinsoga parviflora, quickweed, gallant soldier, zoltlica]
+
+  chenopodium_album:
+    polska: komosa biala
+    rola: chwast
+    w_polsce: pospolity
+    aliasy: [CA, CHEAL, chenopodium album, goosefoot, lambsquarters, komosa]
+
+  convolvulus_arvensis:
+    polska: powoj polny
+    rola: chwast
+    w_polsce: pospolity
+    aliasy: [CONAR, convolvulus arvensis, field bindweed, bindweed, powoj]
+
+  solanum_nigrum:
+    polska: psianka czarna
+    rola: chwast
+    w_polsce: pospolity
+    aliasy: [SOLNI, solanum nigrum, black nightshade, psianka]
+
+  galium_aparine:
+    polska: przytulia czepna
+    rola: chwast
+    w_polsce: pospolity
+    aliasy: [GA, GALAP, galium aparine, catchweed, cleavers, przytulia]
+
+  thlaspi_arvense:
+    polska: tobolki polne
+    rola: chwast
+    w_polsce: pospolity
+    aliasy: [TA, THLAR, thlaspi arvense, field pennycress, tobolki]
+
+  capsella_bursa_pastoris:
+    polska: tasznik pospolity
+    rola: chwast
+    w_polsce: pospolity
+    aliasy: [CB, CAPBP, capsella bursa-pastoris, shepherds purse, tasznik]
+
+  matricaria_perforata:
+    polska: maruna bezwonna
+    rola: chwast
+    w_polsce: pospolity
+    aliasy: [MI, MATIN, matricaria perforata, matricaria inodora, field chamomile, maruna]
+
+  polygonum_convolvulus:
+    polska: rdest powojowaty
+    rola: chwast
+    w_polsce: pospolity
+    aliasy: [PC, POLCO, polygonum convolvulus, wild buckwheat, rdest]
+
+  viola_arvensis:
+    polska: fiolek polny
+    rola: chwast
+    w_polsce: pospolity
+    aliasy: [VA, VIOAR, viola arvensis, field pansy, fiolek]
+
+  # ---------------- chwasty rzadkie lub nieobecne w Polsce ----------------
+  # Zwijamy je do klasy zbiorczej: trenowanie osobnej klasy pod gatunek,
+  # ktorego model nigdy nie zobaczy, to zmarnowana pojemnosc modelu.
+  sorghum_halepense:
+    polska: sorgo aleppo
+    rola: chwast
+    w_polsce: efemerofit (rzadko)
+    zwin_do: chwast_inny
+    aliasy: [SORHA, sorghum halepense, johnson grass, johnsongrass]
+
+  portulaca_oleracea:
+    polska: portulaka pospolita
+    rola: chwast
+    w_polsce: regionalnie
+    zwin_do: chwast_inny
+    aliasy: [POROL, portulaca oleracea, purslane, portulaka]
+
+  cyperus_rotundus:
+    polska: cibora okragla
+    rola: chwast
+    w_polsce: nie wystepuje
+    zwin_do: chwast_inny
+    aliasy: [CYPRO, cyperus rotundus, purple nutsedge, cibora]
+
+  # ---------------- klasy zbiorcze ----------------
+  chwast_inny:
+    polska: chwast (klasa zbiorcza)
+    rola: chwast
+    w_polsce: "-"
+    aliasy: [weed, chwast, other weed, weed_4, unknown weed]
+
+# Mapowanie masek: wartosc piksela -> nazwa gatunku.
+# WeedsGalore: kod autorow nazywa chwasty tylko weed_1..weed_4 (wartosci 2-5).
+# Przypisanie gatunkow wedlug publikacji arXiv:2502.13103 - POTWIERDZ kolejnosc
+# w tabeli klas publikacji, zanim oprzesz na tym wnioski o gatunkach.
+maski:
+  weedsgalore:
+    1: zea_mays
+    2: amaranthus_retroflexus
+    3: echinochloa_crus_galli
+    4: galinsoga_parviflora
+    5: chwast_inny
+  # PhenoBench (semantics): 1 burak, 2 chwast, 3/4 to samo, ale widoczne w mniej niz 50%
+  # (przy krawedzi zdjecia) - zostaja, bo widoczna czesc to nadal chwast.
+  phenobench:
+    1: beta_vulgaris
+    2: chwast_inny
+    3: beta_vulgaris
+    4: chwast_inny
+  # CoFly: labels_1d, wartosci wg README zbioru
+  cofly:
+    1: sorghum_halepense
+    2: portulaca_oleracea
+    3: convolvulus_arvensis
