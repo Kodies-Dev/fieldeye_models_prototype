@@ -1,0 +1,61 @@
+{
+  "detektor": "TTA(YOLO(modele_k640_pheno/model.pt))",
+  "split": "test",
+  "obrazow": 26,
+  "AP50": 0.6596,
+  "przy_progu": {
+    "prog": 0.15,
+    "trafione": 1021,
+    "falszywe": 548,
+    "pominiete": 607,
+    "precyzja": 0.6507,
+    "czulosc": 0.6271
+  },
+  "wedlug_dni": {
+    "2023-05-25": {
+      "prog": 0.15,
+      "trafione": 64,
+      "falszywe": 91,
+      "pominiete": 268,
+      "precyzja": 0.4129,
+      "czulosc": 0.1928,
+      "obrazow": 8
+    },
+    "2023-05-30": {
+      "prog": 0.15,
+      "trafione": 276,
+      "falszywe": 154,
+      "pominiete": 150,
+      "precyzja": 0.6419,
+      "czulosc": 0.6479,
+      "obrazow": 8
+    },
+    "2023-06-06": {
+      "prog": 0.15,
+      "trafione": 577,
+      "falszywe": 175,
+      "pominiete": 139,
+      "precyzja": 0.7673,
+      "czulosc": 0.8059,
+      "obrazow": 8
+    },
+    "2023-06-15": {
+      "prog": 0.15,
+      "trafione": 104,
+      "falszywe": 128,
+      "pominiete": 50,
+      "precyzja": 0.4483,
+      "czulosc": 0.6753,
+      "obrazow": 2
+    },
+    "razem": {
+      "prog": 0.15,
+      "trafione": 1021,
+      "falszywe": 548,
+      "pominiete": 607,
+      "precyzja": 0.6507,
+      "czulosc": 0.6271,
+      "obrazow": 26
+    }
+  }
+}

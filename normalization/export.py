@@ -20,6 +20,25 @@ log = logging.getLogger(__name__)
 
 _PAMIEC = {"klucz": None, "obraz": None}
 
+# Jak skladac obraz z surowych kanalow WeedsGalore (16 bit, liniowe pomiary kamery multispektralnej):
+#   "liniowe" - jak dotad: wspolne rozciagniecie percentylami, bez korekty gamma
+#   "srgb"    - po rozciagnieciu korekta gamma sRGB, jak w zwyklym aparacie (EWIS1, Arducam).
+# Model uczony na wersji liniowej prawie nie wykrywal chwastow na zwyklych zdjeciach RGB
+# (AP50 0,03 na EWIS1); te same zdjecia przerobione na styl liniowy dawaly 0,22.
+KOLORY_WG = {"tryb": "liniowe"}
+
+
+def ustaw_kolory_weedsgalore(tryb):
+    if tryb not in ("liniowe", "srgb"):
+        raise ValueError(f"nieznany tryb kolorow: {tryb}")
+    KOLORY_WG["tryb"] = tryb
+    _PAMIEC["klucz"] = _PAMIEC["obraz"] = None
+
+
+def _liniowe_na_srgb(x):
+    """Korekta gamma sRGB dla wartosci 0-1."""
+    return np.where(x <= 0.0031308, 12.92 * x, 1.055 * np.power(np.clip(x, 0, 1), 1 / 2.4) - 0.055)
+
 
 def _wczytaj_obraz(rekord):
     """Zdjecie rekordu jako BGR.
@@ -62,8 +81,8 @@ def _wczytaj_bez_skali(rekord):
             return None
         kanaly.append(c if c.ndim == 2 else c[:, :, 0])
     img = np.dstack(kanaly)
-    if img.dtype == np.uint8:
-        return img
+    if img.dtype == np.uint8 and KOLORY_WG["tryb"] == "liniowe":
+        return img                                   # jak dotad: 8-bitowe kanaly bez zmian
     # WSPOLNA skala dla trzech kanalow. Rozciaganie kazdego osobno zmienia
     # proporcje kolorow zaleznie od zawartosci zdjecia - przy gestej
     # roslinnosci gleba robila sie rozowa. Percentyle zamiast min/max, zeby
@@ -72,7 +91,10 @@ def _wczytaj_bez_skali(rekord):
     lo, hi = np.percentile(f, 0.5), np.percentile(f, 99.5)
     if hi <= lo:
         hi = lo + 1.0
-    return np.clip((f - lo) * (255.0 / (hi - lo)), 0, 255).astype(np.uint8)
+    x = np.clip((f - lo) / (hi - lo), 0, 1)
+    if KOLORY_WG["tryb"] == "srgb":
+        x = _liniowe_na_srgb(x)
+    return np.clip(x * 255.0, 0, 255).astype(np.uint8)
 
 
 def eksportuj(rekordy, katalog, nazwy_klas=None, kopiuj_obrazy=True, jakosc=92):

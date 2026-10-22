@@ -1,0 +1,61 @@
+{
+  "detektor": "YOLO(modele_dane_ewis1_bt/model.pt)",
+  "split": "test",
+  "obrazow": 26,
+  "AP50": 0.6958,
+  "przy_progu": {
+    "prog": 0.15,
+    "trafione": 1133,
+    "falszywe": 868,
+    "pominiete": 495,
+    "precyzja": 0.5662,
+    "czulosc": 0.6959
+  },
+  "wedlug_dni": {
+    "2023-05-25": {
+      "prog": 0.15,
+      "trafione": 106,
+      "falszywe": 177,
+      "pominiete": 226,
+      "precyzja": 0.3746,
+      "czulosc": 0.3193,
+      "obrazow": 8
+    },
+    "2023-05-30": {
+      "prog": 0.15,
+      "trafione": 311,
+      "falszywe": 231,
+      "pominiete": 115,
+      "precyzja": 0.5738,
+      "czulosc": 0.73,
+      "obrazow": 8
+    },
+    "2023-06-06": {
+      "prog": 0.15,
+      "trafione": 607,
+      "falszywe": 286,
+      "pominiete": 109,
+      "precyzja": 0.6797,
+      "czulosc": 0.8478,
+      "obrazow": 8
+    },
+    "2023-06-15": {
+      "prog": 0.15,
+      "trafione": 109,
+      "falszywe": 174,
+      "pominiete": 45,
+      "precyzja": 0.3852,
+      "czulosc": 0.7078,
+      "obrazow": 2
+    },
+    "razem": {
+      "prog": 0.15,
+      "trafione": 1133,
+      "falszywe": 868,
+      "pominiete": 495,
+      "precyzja": 0.5662,
+      "czulosc": 0.6959,
+      "obrazow": 26
+    }
+  }
+}

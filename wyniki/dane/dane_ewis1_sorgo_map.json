@@ -1,0 +1,18 @@
+{
+  "model": "modele_dane_ewis1_sorgo/model.pt",
+  "dane": "zbior_lotnicze/dataset/data.yaml",
+  "split": "test",
+  "wejscie": 1280,
+  "mAP50": 0.6743,
+  "mAP50_95": 0.3571,
+  "precyzja": 0.7429,
+  "czulosc": 0.6179,
+  "per_klasa": {
+    "chwast": {
+      "precyzja": 0.7429,
+      "czulosc": 0.6179,
+      "mAP50": 0.6743,
+      "mAP50_95": 0.3571
+    }
+  }
+}

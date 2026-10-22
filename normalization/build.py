@@ -98,7 +98,8 @@ def zbuduj(zrodla, wyjscie, tryb_klas="binarnie", kafelek=896, zakladka=0.1,
                       "udzial_pustych": udzial_pustych, "prog_dedup": prog_dedup,
                       "proporcje": list(proporcje), "seed": seed,
                       "oficjalne_splity": oficjalne_splity,
-                      "skale": skale or {}, "limity": limity or {}},
+                      "skale": skale or {}, "limity": limity or {},
+                      "kolory_weedsgalore": E.KOLORY_WG["tryb"]},
         "statystyki": stat,
         "klasy": wynik["klasy"],
         "obiektow_na_klase": wynik["obiektow"],
@@ -142,6 +143,10 @@ def main(argv=None):
     ap.add_argument("--proporcje", type=float, nargs=3, default=(0.70, 0.15, 0.15),
                     metavar=("TRAIN", "VAL", "TEST"),
                     help="proporcje podzialu; 1 0 0 = wszystko do treningu (zbior pomocniczy)")
+    ap.add_argument("--weedsgalore-kolory", choices=["liniowe", "srgb"], default="liniowe",
+                    help="WeedsGalore: liniowe (jak dotad) albo srgb - z korekta gamma, jak zwykly aparat")
+    ap.add_argument("--ewis1-test-dni", nargs="*", default=[],
+                    help="EWIS1: dni lotu RRRRMMDD odlozone jako test, reszta do treningu")
     ap.add_argument("--ewis1-z-sorgo", action="store_true",
                     help="EWIS1: wlacz tez sorgo i zdjecia bez nazwy uprawy (domyslnie tylko 'Maize')")
     ap.add_argument("--seed", type=int, default=0)
@@ -154,6 +159,8 @@ def main(argv=None):
     if not zrodla:
         ap.error("podaj co najmniej jeden zbior, np. --weedsgalore sciezka/")
 
+    E.ustaw_kolory_weedsgalore(a.weedsgalore_kolory)
+
     def _pary(lista, typ):
         out = {}
         for x in lista:
@@ -164,7 +171,7 @@ def main(argv=None):
     info = zbuduj(zrodla, a.output, a.tryb_klas, a.kafelek, a.zakladka,
                   a.udzial_pustych, a.prog_dedup, proporcje=tuple(a.proporcje),
                   skale=_pary(a.skala, float), limity=_pary(a.maks_zdjec, int),
-                  opcje_adapterow={"ewis1": {"z_sorgo": a.ewis1_z_sorgo}},
+                  opcje_adapterow={"ewis1": {"z_sorgo": a.ewis1_z_sorgo, "test_dni": a.ewis1_test_dni}},
                   splity_weedsgalore=a.splity_weedsgalore, taksonomia=a.taksonomia,
                   kopiuj_obrazy=not a.bez_obrazow,
                   tylko_wlasne_do_testu=a.tylko_wlasne_do_testu,

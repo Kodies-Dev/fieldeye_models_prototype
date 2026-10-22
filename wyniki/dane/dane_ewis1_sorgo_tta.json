@@ -1,0 +1,61 @@
+{
+  "detektor": "TTA(YOLO(modele_dane_ewis1_sorgo/model.pt))",
+  "split": "test",
+  "obrazow": 26,
+  "AP50": 0.7075,
+  "przy_progu": {
+    "prog": 0.15,
+    "trafione": 1115,
+    "falszywe": 594,
+    "pominiete": 513,
+    "precyzja": 0.6524,
+    "czulosc": 0.6849
+  },
+  "wedlug_dni": {
+    "2023-05-25": {
+      "prog": 0.15,
+      "trafione": 94,
+      "falszywe": 132,
+      "pominiete": 238,
+      "precyzja": 0.4159,
+      "czulosc": 0.2831,
+      "obrazow": 8
+    },
+    "2023-05-30": {
+      "prog": 0.15,
+      "trafione": 311,
+      "falszywe": 162,
+      "pominiete": 115,
+      "precyzja": 0.6575,
+      "czulosc": 0.73,
+      "obrazow": 8
+    },
+    "2023-06-06": {
+      "prog": 0.15,
+      "trafione": 599,
+      "falszywe": 178,
+      "pominiete": 117,
+      "precyzja": 0.7709,
+      "czulosc": 0.8366,
+      "obrazow": 8
+    },
+    "2023-06-15": {
+      "prog": 0.15,
+      "trafione": 111,
+      "falszywe": 122,
+      "pominiete": 43,
+      "precyzja": 0.4764,
+      "czulosc": 0.7208,
+      "obrazow": 2
+    },
+    "razem": {
+      "prog": 0.15,
+      "trafione": 1115,
+      "falszywe": 594,
+      "pominiete": 513,
+      "precyzja": 0.6524,
+      "czulosc": 0.6849,
+      "obrazow": 26
+    }
+  }
+}

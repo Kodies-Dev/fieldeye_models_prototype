@@ -1,0 +1,61 @@
+{
+  "detektor": "YOLO(modele_kolory_srgb_ewis1/model.pt)",
+  "split": "test",
+  "obrazow": 26,
+  "AP50": 0.6777,
+  "przy_progu": {
+    "prog": 0.15,
+    "trafione": 1099,
+    "falszywe": 784,
+    "pominiete": 529,
+    "precyzja": 0.5836,
+    "czulosc": 0.6751
+  },
+  "wedlug_dni": {
+    "2023-05-25": {
+      "prog": 0.15,
+      "trafione": 90,
+      "falszywe": 139,
+      "pominiete": 242,
+      "precyzja": 0.393,
+      "czulosc": 0.2711,
+      "obrazow": 8
+    },
+    "2023-05-30": {
+      "prog": 0.15,
+      "trafione": 295,
+      "falszywe": 249,
+      "pominiete": 131,
+      "precyzja": 0.5423,
+      "czulosc": 0.6925,
+      "obrazow": 8
+    },
+    "2023-06-06": {
+      "prog": 0.15,
+      "trafione": 604,
+      "falszywe": 278,
+      "pominiete": 112,
+      "precyzja": 0.6848,
+      "czulosc": 0.8436,
+      "obrazow": 8
+    },
+    "2023-06-15": {
+      "prog": 0.15,
+      "trafione": 110,
+      "falszywe": 118,
+      "pominiete": 44,
+      "precyzja": 0.4825,
+      "czulosc": 0.7143,
+      "obrazow": 2
+    },
+    "razem": {
+      "prog": 0.15,
+      "trafione": 1099,
+      "falszywe": 784,
+      "pominiete": 529,
+      "precyzja": 0.5836,
+      "czulosc": 0.6751,
+      "obrazow": 26
+    }
+  }
+}

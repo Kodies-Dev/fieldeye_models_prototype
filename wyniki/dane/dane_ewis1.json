@@ -1,0 +1,50 @@
+{
+  "model": "modele_dane_ewis1/model.pt",
+  "jeden_prog": {
+    "2023-05-25": {
+      "prog": 0.15,
+      "trafione": 92,
+      "falszywe": 135,
+      "pominiete": 240,
+      "precyzja": 0.4053,
+      "czulosc": 0.2771,
+      "obrazow": 8
+    },
+    "2023-05-30": {
+      "prog": 0.15,
+      "trafione": 310,
+      "falszywe": 196,
+      "pominiete": 116,
+      "precyzja": 0.6126,
+      "czulosc": 0.7277,
+      "obrazow": 8
+    },
+    "2023-06-06": {
+      "prog": 0.15,
+      "trafione": 591,
+      "falszywe": 241,
+      "pominiete": 125,
+      "precyzja": 0.7103,
+      "czulosc": 0.8254,
+      "obrazow": 8
+    },
+    "2023-06-15": {
+      "prog": 0.15,
+      "trafione": 107,
+      "falszywe": 156,
+      "pominiete": 47,
+      "precyzja": 0.4068,
+      "czulosc": 0.6948,
+      "obrazow": 2
+    },
+    "razem": {
+      "prog": 0.15,
+      "trafione": 1100,
+      "falszywe": 728,
+      "pominiete": 528,
+      "precyzja": 0.6018,
+      "czulosc": 0.6757,
+      "obrazow": 26
+    }
+  }
+}

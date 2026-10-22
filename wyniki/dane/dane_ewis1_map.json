@@ -1,0 +1,18 @@
+{
+  "model": "modele_dane_ewis1/model.pt",
+  "dane": "zbior_lotnicze/dataset/data.yaml",
+  "split": "test",
+  "wejscie": 1280,
+  "mAP50": 0.6685,
+  "mAP50_95": 0.3548,
+  "precyzja": 0.7717,
+  "czulosc": 0.5866,
+  "per_klasa": {
+    "chwast": {
+      "precyzja": 0.7717,
+      "czulosc": 0.5866,
+      "mAP50": 0.6685,
+      "mAP50_95": 0.3548
+    }
+  }
+}

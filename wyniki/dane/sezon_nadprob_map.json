@@ -1,0 +1,18 @@
+{
+  "model": "modele_sezon_nadprob/model.pt",
+  "dane": "zbior_lotnicze/dataset/data.yaml",
+  "split": "test",
+  "wejscie": 1280,
+  "mAP50": 0.6736,
+  "mAP50_95": 0.3537,
+  "precyzja": 0.7497,
+  "czulosc": 0.6143,
+  "per_klasa": {
+    "chwast": {
+      "precyzja": 0.7497,
+      "czulosc": 0.6143,
+      "mAP50": 0.6736,
+      "mAP50_95": 0.3537
+    }
+  }
+}

@@ -332,7 +332,10 @@ def ocen_detektor(detektor, dane, split="test", prog=0.15, iou=0.5):
             "wedlug_dni": ocen_wedlug_grup(pred, prawda, prog, iou)}
 
 
-def ocen_wedlug_grup(predykcje, prawda, prog=0.15, iou=0.5, wzorzec=r"\d{4}-\d{2}-\d{2}"):
+WZORZEC_DATY = r"\d{4}-\d{2}-\d{2}|(?<!\d)20\d{6}(?!\d)"     # WeedsGalore 2023-05-25, EWIS1 20220509
+
+
+def ocen_wedlug_grup(predykcje, prawda, prog=0.15, iou=0.5, wzorzec=WZORZEC_DATY):
     """Czulosc i precyzja osobno dla kazdej grupy obrazow (domyslnie: dzien lotu
     odczytany z nazwy pliku) oraz lacznie.
 
@@ -343,7 +346,10 @@ def ocen_wedlug_grup(predykcje, prawda, prog=0.15, iou=0.5, wzorzec=r"\d{4}-\d{2
     grupy = {}
     for stem in prawda:
         m = re.search(wzorzec, stem)
-        grupy.setdefault(m.group(0) if m else "inne", []).append(stem)
+        d = m.group(0) if m else "inne"
+        if len(d) == 8 and d.isdigit():                       # 20220509 -> 2022-05-09
+            d = f"{d[:4]}-{d[4:6]}-{d[6:]}"
+        grupy.setdefault(d, []).append(stem)
     wynik = {}
     for nazwa, stemy in sorted(grupy.items()) + [("razem", list(prawda))]:
         w = pr_przy_progach({s: predykcje.get(s, []) for s in stemy},

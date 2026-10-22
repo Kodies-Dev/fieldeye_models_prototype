@@ -1,0 +1,34 @@
+{
+  "detektor": "YOLO(modele_sezon_nadprob_s1/model.pt)",
+  "split": "test",
+  "obrazow": 132,
+  "AP50": 0.0852,
+  "przy_progu": {
+    "prog": 0.15,
+    "trafione": 19,
+    "falszywe": 59,
+    "pominiete": 4403,
+    "precyzja": 0.2436,
+    "czulosc": 0.0043
+  },
+  "wedlug_dni": {
+    "2022-05-16": {
+      "prog": 0.15,
+      "trafione": 19,
+      "falszywe": 59,
+      "pominiete": 4403,
+      "precyzja": 0.2436,
+      "czulosc": 0.0043,
+      "obrazow": 132
+    },
+    "razem": {
+      "prog": 0.15,
+      "trafione": 19,
+      "falszywe": 59,
+      "pominiete": 4403,
+      "precyzja": 0.2436,
+      "czulosc": 0.0043,
+      "obrazow": 132
+    }
+  }
+}
