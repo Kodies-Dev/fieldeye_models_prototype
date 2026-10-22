@@ -1,0 +1,325 @@
+=====================================================================
+FIELDEYE - JAK ROZPAKOWAC PLIK ZIP (macOS, Linux, Windows)
+=====================================================================
+
+Instrukcja dotyczy paczek przekazywanych w projekcie, przede wszystkim
+fieldeye_dane.zip (zbiory danych, ok. 600 MB), ale dziala dla kazdego
+pliku .zip.
+
+Zawartosc fieldeye_dane.zip po rozpakowaniu:
+
+    fieldeye_dane/
+        zbior_lotnicze/              WeedsGalore (dron, kamera multispektralna)
+        zbior_naziemne/              Sudars (zdjecia z ziemi)
+        zbior_ewis1_podzial/         EWIS1 (dron, zwykla kamera RGB)
+        FIELDEYE_zbiory_danych.docx  opis danych (Word)
+        FIELDEYE_zbiory_danych.md    opis danych (Markdown)
+
+Po rozpakowaniu trzy katalogi zbior_* trzeba przeniesc do GLOWNEGO
+katalogu repozytorium projektu (tam, gdzie lezy app.py) - patrz
+rozdzial 5.
+
+
+---------------------------------------------------------------------
+0. ZANIM ZACZNIESZ
+---------------------------------------------------------------------
+
+1. Sprawdz, czy plik pobral sie w calosci. fieldeye_dane.zip ma
+   kilkaset MB. Jesli ma kilka KB albo kilka MB, pobranie sie nie
+   udalo (czesto zamiast pliku pobiera sie strona HTML z Dysku Google).
+   Pobierz jeszcze raz.
+
+2. Miejsce na dysku: potrzeba co najmniej 2 razy tyle, ile wazy ZIP
+   (sam plik + rozpakowana zawartosc). Dla fieldeye_dane.zip:
+   ok. 1,5 GB wolnego miejsca.
+
+3. Dysk Google przy duzych plikach pokazuje ostrzezenie
+   "Nie mozna przeskanowac tego pliku pod katem wirusow".
+   To normalne dla plikow powyzej ok. 100 MB - kliknij
+   "Pobierz mimo to".
+
+4. Najlepiej rozpakowywac w krotkiej sciezce bez polskich znakow
+   i spacji, np.:
+       Windows:  C:\Users\<uzytkownik>\Documents\
+       macOS:    /Users/<uzytkownik>/Documents/
+       Linux:    /home/<uzytkownik>/
+
+
+=====================================================================
+1. macOS
+=====================================================================
+
+1.1. W Finderze (najprosciej)
+---------------------------------------------------------------------
+1. Otworz Finder i znajdz plik (zwykle w "Pobrane rzeczy").
+2. Kliknij plik .zip dwa razy.
+3. Narzedzie do archiwow (Archive Utility) rozpakuje go obok,
+   w tym samym folderze. Powstanie folder fieldeye_dane.
+4. Pliku .zip nie trzeba usuwac, ale mozna (zwalnia miejsce).
+
+Uwagi:
+- Duzy plik rozpakowuje sie od kilkunastu sekund do kilku minut;
+  postep widac w malym okienku.
+- Jesli po rozpakowaniu powstal plik .cpgz zamiast folderu, ZIP jest
+  uszkodzony albo niepelny - pobierz go jeszcze raz.
+
+1.2. W Terminalu
+---------------------------------------------------------------------
+Terminal: Aplikacje -> Narzedzia -> Terminal (albo Cmd + spacja,
+wpisac "Terminal").
+
+    cd ~/Downloads
+    unzip fieldeye_dane.zip
+
+Rozpakowanie do wybranego katalogu:
+
+    unzip ~/Downloads/fieldeye_dane.zip -d ~/Documents/
+
+Podglad zawartosci bez rozpakowywania:
+
+    unzip -l ~/Downloads/fieldeye_dane.zip | less
+    (wyjscie z podgladu: klawisz q)
+
+Sprawdzenie, czy archiwum nie jest uszkodzone:
+
+    unzip -t ~/Downloads/fieldeye_dane.zip
+    (na koncu ma byc: "No errors detected")
+
+Gdy plik juz istnieje, unzip pyta, co zrobic:
+    [y]es, [n]o, [A]ll, [N]one, [r]ename
+    A = nadpisz wszystko, N = nie nadpisuj niczego.
+
+Nadpisanie wszystkiego bez pytania:
+
+    unzip -o fieldeye_dane.zip
+
+1.3. Typowe problemy na macOS
+---------------------------------------------------------------------
+- "Operation not permitted" przy rozpakowywaniu w Pobranych albo na
+  Biurku: Ustawienia systemowe -> Prywatnosc i ochrona ->
+  Pelny dostep do dysku -> wlaczyc dla Terminala, albo rozpakowac
+  w ~/Documents.
+- Folder __MACOSX i pliki ._nazwa: dodaje je Finder przy pakowaniu.
+  Nie sa potrzebne, mozna je usunac:
+      rm -rf __MACOSX
+- Pliki .DS_Store w katalogach: ukryte pliki Findera, nie przeszkadzaja.
+
+
+=====================================================================
+2. LINUX (Ubuntu, Debian, Raspberry Pi OS, WSL)
+=====================================================================
+
+2.1. W menedzerze plikow
+---------------------------------------------------------------------
+1. Otworz menedzer plikow (np. Pliki / Nautilus w Ubuntu,
+   Menedzer plikow w Raspberry Pi OS).
+2. Prawy przycisk na pliku .zip -> "Rozpakuj tutaj"
+   (Extract Here) albo "Rozpakuj do..." (Extract to...).
+
+2.2. W terminalu
+---------------------------------------------------------------------
+Program unzip moze nie byc zainstalowany. Instalacja:
+
+    sudo apt update
+    sudo apt install -y unzip
+
+Rozpakowanie:
+
+    cd ~/Downloads
+    unzip fieldeye_dane.zip
+
+Do wybranego katalogu:
+
+    unzip ~/Downloads/fieldeye_dane.zip -d ~/fieldeye_models_prototype/
+
+Podglad i test (jak na macOS):
+
+    unzip -l fieldeye_dane.zip | less
+    unzip -t fieldeye_dane.zip
+
+Bez instalowania unzip (Python jest prawie zawsze dostepny):
+
+    python3 -m zipfile -e fieldeye_dane.zip .
+
+2.3. Raspberry Pi
+---------------------------------------------------------------------
+- Na Pi zwykle wystarczy paczka z modelem (.hef) i ewentualnie
+  zbior testowy. Cala paczka danych (ok. 600 MB) potrzebna jest
+  tylko do pelnej oceny modelu.
+- Sprawdz miejsce na karcie: df -h /
+- Kopiowanie z komputera na Pi przez siec:
+      scp fieldeye_dane.zip uzytkownik@adres-pi:~/
+  i na Pi:
+      cd ~ && unzip fieldeye_dane.zip
+
+2.4. WSL (Linux w Windowsie)
+---------------------------------------------------------------------
+Dysk C: Windowsa jest w WSL widoczny jako /mnt/c/. Plik pobrany
+w Windowsie do Pobranych:
+
+    cd ~
+    unzip /mnt/c/Users/<uzytkownik>/Downloads/fieldeye_dane.zip
+
+Sciezki ze spacjami w cudzyslowie:
+
+    unzip "/mnt/c/Users/<uzytkownik>/Desktop/Nowy folder/fieldeye_dane.zip"
+
+Rozpakowanie w katalogu Linuksa (~) jest szybsze niz na dysku
+Windowsa (/mnt/c/...), co ma znaczenie przy tysiacach malych plikow.
+
+2.5. Typowe problemy na Linuksie
+---------------------------------------------------------------------
+- "unzip: command not found"  ->  sudo apt install -y unzip
+- "End-of-central-directory signature not found"  ->  plik niepelny
+  albo to nie jest ZIP; pobrac jeszcze raz.
+- Polskie znaki w nazwach wyswietlaja sie jako krzaczki  ->  nazwy
+  plikow FIELDEYE nie maja polskich znakow; jesli inne archiwum
+  sprawia problem:  unzip -O CP852 plik.zip   (archiwa z Windowsa).
+- "Permission denied"  ->  rozpakowac w katalogu domowym (~),
+  a nie w katalogu systemowym.
+
+
+=====================================================================
+3. WINDOWS 10 / 11
+=====================================================================
+
+3.1. W Eksploratorze plikow (najprosciej)
+---------------------------------------------------------------------
+1. Otworz Eksplorator plikow (Win + E) i znajdz plik (zwykle w
+   "Pobrane").
+2. Prawy przycisk na pliku .zip -> "Wyodrebnij wszystkie..."
+   (Windows 11: moze byc pod "Pokaz wiecej opcji").
+3. Wybierz miejsce docelowe, np.
+       C:\Users\<uzytkownik>\Documents
+   i zaznacz "Pokaz wyodrebnione pliki po zakonczeniu".
+4. Kliknij "Wyodrebnij".
+
+UWAGA - podwojny folder:
+Windows sam dopisuje do sciezki docelowej nazwe archiwum. Jesli
+wybierzesz ...\Documents\fieldeye_dane, wyjdzie
+...\Documents\fieldeye_dane\fieldeye_dane\zbior_... - jeden poziom
+za duzo. Jako miejsce docelowe wybieraj folder NADRZEDNY
+(np. ...\Documents) albo po rozpakowaniu przenies zawartosc pietro
+wyzej.
+
+UWAGA - samo otwarcie to nie rozpakowanie:
+Dwuklik na .zip tylko pokazuje zawartosc jak folder. Programy
+(Python, symulator) nie widza takich plikow - zawsze uzywaj
+"Wyodrebnij wszystkie".
+
+3.2. W PowerShellu
+---------------------------------------------------------------------
+PowerShell: menu Start -> wpisac "PowerShell".
+
+    cd $HOME\Downloads
+    Expand-Archive -Path .\fieldeye_dane.zip -DestinationPath $HOME\Documents
+
+Nadpisanie istniejacych plikow:
+
+    Expand-Archive -Path .\fieldeye_dane.zip -DestinationPath $HOME\Documents -Force
+
+Podglad zawartosci:
+
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    [IO.Compression.ZipFile]::OpenRead("$HOME\Downloads\fieldeye_dane.zip").Entries | Select-Object -First 20 FullName
+
+W Windows 10 (od wersji 1803) i 11 jest tez wbudowany tar:
+
+    tar -xf fieldeye_dane.zip -C $HOME\Documents
+
+3.3. 7-Zip (opcjonalnie, szybszy przy duzych plikach)
+---------------------------------------------------------------------
+1. Pobierz i zainstaluj 7-Zip ze strony 7-zip.org.
+2. Prawy przycisk na pliku .zip -> 7-Zip -> "Wypakuj tutaj" albo
+   "Wypakuj do fieldeye_dane\".
+W wierszu polecen:
+
+    "C:\Program Files\7-Zip\7z.exe" x fieldeye_dane.zip -o"C:\Users\<uzytkownik>\Documents"
+
+3.4. Typowe problemy na Windowsie
+---------------------------------------------------------------------
+- "Sciezka jest za dluga" / "Path too long" / brakujace pliki po
+  rozpakowaniu: Windows domyslnie obsluguje sciezki do 260 znakow.
+  Rozwiazania:
+    a) rozpakowac blisko korzenia dysku, np. C:\fieldeye\
+    b) uzyc 7-Zip (radzi sobie z dlugimi sciezkami)
+    c) wlaczyc dlugie sciezki (PowerShell jako administrator):
+       New-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" -Name "LongPathsEnabled" -Value 1 -PropertyType DWORD -Force
+       i ponownie uruchomic komputer.
+- Bardzo wolne rozpakowywanie: wbudowane narzedzie Windowsa jest
+  wolne przy tysiacach malych plikow (paczka danych ma ich kilka
+  tysiecy). Uzyj 7-Zip albo tar (3.2). Antywirus tez spowalnia -
+  mozna chwilowo wykluczyc folder docelowy ze skanowania.
+- "Windows chroni ten komputer" / zablokowane pliki z internetu:
+  prawy przycisk na .zip -> Wlasciwosci -> zaznaczyc "Odblokuj"
+  -> OK, dopiero potem rozpakowac.
+- OneDrive: jesli Dokumenty albo Pulpit sa synchronizowane z OneDrive,
+  rozpakowanie kilkuset MB uruchomi wysylanie do chmury. Lepiej
+  rozpakowac poza OneDrive, np. w C:\fieldeye\.
+- "Plik jest uszkodzony" / "Archiwum jest nieprawidlowe": plik
+  niepelny - pobrac jeszcze raz.
+
+
+=====================================================================
+4. TWORZENIE ZIP (gdy trzeba cos odeslac)
+=====================================================================
+
+macOS:   prawy przycisk na folderze -> "Kompresuj ..."
+         albo w Terminalu:  zip -r paczka.zip folder/
+         (zip z Terminala nie dodaje folderu __MACOSX)
+Linux:   zip -r paczka.zip folder/      (instalacja: sudo apt install -y zip)
+Windows: prawy przycisk na folderze -> "Wyslij do" ->
+         "Folder skompresowany (zip)"
+         (Windows 11: "Kompresuj do pliku ZIP")
+         albo w PowerShellu:
+         Compress-Archive -Path .\folder -DestinationPath .\paczka.zip
+
+Limity przesylania: Gmail 25 MB na zalacznik, Discord bez Nitro
+10 MB - wiekszy plik przez Dysk Google i wyslac link.
+
+
+=====================================================================
+5. PO ROZPAKOWANIU: DANE DO PROJEKTU
+=====================================================================
+
+Trzy katalogi zbior_* musza lezec w glownym katalogu repozytorium
+projektu, obok app.py. Docelowo:
+
+    fieldeye_models_prototype/
+        app.py
+        models/
+        mission/
+        ...
+        zbior_lotnicze/
+        zbior_naziemne/
+        zbior_ewis1_podzial/
+
+macOS / Linux (Terminal, z katalogu, gdzie jest rozpakowany
+fieldeye_dane):
+
+    mv fieldeye_dane/zbior_* ~/Documents/fieldeye_models_prototype/
+
+Windows (PowerShell):
+
+    Move-Item .\fieldeye_dane\zbior_* $HOME\Documents\fieldeye_models_prototype\
+
+albo w Eksploratorze: zaznaczyc trzy foldery zbior_*, Ctrl + X,
+wejsc do folderu projektu, Ctrl + V.
+
+Sprawdzenie (z katalogu projektu):
+
+    macOS / Linux:
+        ls zbior_lotnicze/dataset zbior_naziemne/dataset zbior_ewis1_podzial/dataset
+    Windows:
+        dir zbior_lotnicze\dataset, zbior_naziemne\dataset, zbior_ewis1_podzial\dataset
+
+W kazdym ma byc: data.yaml, images, labels.
+
+Katalogi zbior_* sa w .gitignore - nie trafia do repozytorium
+przy git add / git push. Opisy danych (FIELDEYE_zbiory_danych.docx
+i .md) mozna zostawic w fieldeye_dane albo przeniesc, gdzie wygodnie.
+
+Dalej: dokument "FIELDEYE: opis projektu", rozdzial 1 (symulator od
+zera na nowym komputerze).
+
+=====================================================================
