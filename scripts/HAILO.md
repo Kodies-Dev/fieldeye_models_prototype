@@ -86,11 +86,14 @@ w `--end-node-names`.
 
 ## 3. Raspberry Pi 5 z AI HAT+: sprawdzenie
 
-**Najprościej jednym skryptem** (po skopiowaniu `stitch-live` z katalogiem `hailo/`
-i skompilowanymi plikami `.hef`):
+**Najprościej jednym skryptem.** Domyślnie sprawdza model końcowy
+`fieldeye_final_1280_h8.hef`: sam wypakowuje go z `model_fin.zip` do `hailo/`, pokazuje
+`parse-hef` i przepustowość, a gdy jest zbiór testowy EWIS1 (`zbior_ewis1_podzial/`),
+liczy AP50 bez TTA i z TTA i porównuje z wynikami `.pt` z dokumentacji modelu:
 
 ```bash
 bash scripts/check_hef.sh
+bash scripts/check_hef.sh hailo/inny_model.hef zbior_lotnicze/dataset/data.yaml   # inny model lub zbiór
 ```
 
 Ręcznie:

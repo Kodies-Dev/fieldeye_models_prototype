@@ -189,6 +189,25 @@ def test_konfiguracje_misji_i_domyslne():
     assert hef.detekcja.model.endswith(".hef") and hef.detekcja.prog_pewnosci == 0.15
 
 
+def test_konfiguracja_hailo_wskazuje_model_koncowy():
+    """Model z konfiguracji jest w model_fin.zip, a skrypt sprawdzajacy uzywa tej samej sciezki."""
+    import zipfile
+    from mission.config import MissionConfig
+    model = MissionConfig.wczytaj(ROOT / "configs" / "mission_hailo.yaml").detekcja.model
+    with zipfile.ZipFile(ROOT / "model_fin.zip") as z:
+        assert f"model_fin/{Path(model).name}" in z.namelist()
+    assert model in (ROOT / "scripts" / "check_hef.sh").read_text(encoding="utf-8")
+
+
+def test_kafelek_hailo_obejmuje_pole_kafelka_treningowego():
+    """Kafelek w konfiguracji to ok. 1,5 m pola dla Arducam 64MP (16 MP) z 5 m, jak przy treningu."""
+    from mission.config import MissionConfig
+    from stitchlive.camera import ARDUCAM_64MP_16MP as kam, KAFELEK_TRENINGOWY_M
+    kafelek = MissionConfig.wczytaj(ROOT / "configs" / "mission_hailo.yaml").detekcja.kafelek
+    pole_m = kafelek * kam.gsd_mm(5.0) / 1000
+    assert abs(pole_m - KAFELEK_TRENINGOWY_M) < 0.05 * KAFELEK_TRENINGOWY_M
+
+
 @pytest.mark.parametrize("skrypt", ["finish_models.sh", "check_hef.sh"])
 def test_skrypty_bez_bledow_skladni(skrypt):
     import subprocess
