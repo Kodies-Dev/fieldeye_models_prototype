@@ -22,7 +22,8 @@ krok "1. Akcelerator"
 hailortcli fw-control identify || { echo "Brak akceleratora Hailo albo HailoRT - sprawdz AI HAT+ i pakiet hailo-all."; exit 1; }
 
 krok "2. Plik HEF: $HEF"
-[ -f "$HEF" ] || { echo "Brak pliku $HEF - skopiuj go do katalogu repozytorium."; exit 1; }
+[ -f "$HEF" ] || { echo "Brak pliku $HEF - skopiuj go do katalogu repozytorium"
+                      echo "(model koncowy: unzip -j model_fin.zip model_fin/fieldeye_final_1280_h8.hef)."; exit 1; }
 hailortcli parse-hef "$HEF" | head -30 || { echo "parse-hef nie przeszedl: plik niezgodny z HailoRT na tym Pi."; exit 1; }
 
 krok "3. Szybkosc (kafelki 1280x1280 na sekunde)"

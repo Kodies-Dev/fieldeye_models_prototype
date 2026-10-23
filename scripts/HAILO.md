@@ -86,11 +86,16 @@ w `--end-node-names`.
 
 ## 3. Raspberry Pi 5 z AI HAT+: sprawdzenie
 
-**Najprościej jednym skryptem** (po skopiowaniu `stitch-live` z katalogiem `hailo/`
-i skompilowanymi plikami `.hef`):
+**Najprościej jednym skryptem.** Domyślnie sprawdza model końcowy
+`fieldeye_final_1280_h8.hef` w katalogu repozytorium: akcelerator, `parse-hef`,
+przepustowość, a gdy jest paczka testowa `test_ewis1/` (odłożony dzień EWIS1), liczy
+AP50 bez TTA i z TTA i porównuje z wynikami `.pt`. Wyniki trafiają do `wyniki_hef/`.
 
 ```bash
+unzip -j model_fin.zip model_fin/fieldeye_final_1280_h8.hef   # model końcowy, jednorazowo
+unzip test_ewis1.zip                                           # paczka testowa, przekazywana osobno
 bash scripts/check_hef.sh
+bash scripts/check_hef.sh inny_model.hef zbior_lotnicze/dataset/data.yaml   # inny model lub zbiór
 ```
 
 Ręcznie:
