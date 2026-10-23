@@ -384,7 +384,7 @@ def wlasne(katalog, tax, klasy_yolo=None, domena="uav", agl_m=None, grupa=None):
     return out
 
 
-def ewis1(katalog, tax, z_sorgo=False):
+def ewis1(katalog, tax, z_sorgo=False, test_dni=None):
     """EWIS1 (Mendeley 2026): dron DJI Mavic 2 Pro, 5 m nad polem, kukurydza i sorgo.
 
     Uklad: bounding_boxes/*.xml (Pascal VOC, ramki z masek autorow), images/*.png,
@@ -395,6 +395,9 @@ def ewis1(katalog, tax, z_sorgo=False):
     nauczyc model pomijac trawy. Pliki bez nazwy uprawy (img_2021...) pochodza
     najpewniej z pierwszej czesci projektu EWIS, poswieconej sorgo - traktowane jak sorgo.
     GSD ok. 1,18 mm/px (matryca 13,2 mm, 5472 px, ogniskowa 10,26 mm, 5 m).
+
+    test_dni: dni lotu (RRRRMMDD) odlozone jako test - reszta do treningu. Grupa
+    to pole + dzien lotu, wiec zdjecia jednego lotu nie trafiaja do dwoch czesci.
     """
     katalog = Path(katalog)
     bb = katalog / "bounding_boxes"
@@ -405,8 +408,14 @@ def ewis1(katalog, tax, z_sorgo=False):
         log.info("ewis1: tylko kukurydza - %d zdjec, pominieto %d (sorgo i bez nazwy uprawy)",
                  len(rek), przed - len(rek))
     uklady = collections.Counter()
+    test_dni = {str(d) for d in (test_dni or [])}
     for r in rek:
         r.gsd_mm = 1.18
+        m = re.match(r"([A-Za-z]+)_(20\d{6})", Path(r.obraz).name)
+        if m:
+            r.grupa = f"ewis1_{m.group(1)}_{m.group(2)}"
+        if test_dni:
+            r.split = "test" if m and m.group(2) in test_dni else "train"
         uklady[_ewis1_uklad(r, katalog / "masks" / Path(r.obraz).name)] += 1
     log.info("ewis1: uklad ramek wzgledem zdjecia: %s", dict(uklady))
     return rek

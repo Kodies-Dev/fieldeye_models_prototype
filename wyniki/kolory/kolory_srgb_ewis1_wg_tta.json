@@ -1,0 +1,61 @@
+{
+  "detektor": "TTA(YOLO(modele_kolory_srgb_ewis1/model.pt))",
+  "split": "test",
+  "obrazow": 26,
+  "AP50": 0.7002,
+  "przy_progu": {
+    "prog": 0.15,
+    "trafione": 1091,
+    "falszywe": 531,
+    "pominiete": 537,
+    "precyzja": 0.6726,
+    "czulosc": 0.6701
+  },
+  "wedlug_dni": {
+    "2023-05-25": {
+      "prog": 0.15,
+      "trafione": 88,
+      "falszywe": 107,
+      "pominiete": 244,
+      "precyzja": 0.4513,
+      "czulosc": 0.2651,
+      "obrazow": 8
+    },
+    "2023-05-30": {
+      "prog": 0.15,
+      "trafione": 293,
+      "falszywe": 173,
+      "pominiete": 133,
+      "precyzja": 0.6288,
+      "czulosc": 0.6878,
+      "obrazow": 8
+    },
+    "2023-06-06": {
+      "prog": 0.15,
+      "trafione": 602,
+      "falszywe": 167,
+      "pominiete": 114,
+      "precyzja": 0.7828,
+      "czulosc": 0.8408,
+      "obrazow": 8
+    },
+    "2023-06-15": {
+      "prog": 0.15,
+      "trafione": 108,
+      "falszywe": 84,
+      "pominiete": 46,
+      "precyzja": 0.5625,
+      "czulosc": 0.7013,
+      "obrazow": 2
+    },
+    "razem": {
+      "prog": 0.15,
+      "trafione": 1091,
+      "falszywe": 531,
+      "pominiete": 537,
+      "precyzja": 0.6726,
+      "czulosc": 0.6701,
+      "obrazow": 26
+    }
+  }
+}

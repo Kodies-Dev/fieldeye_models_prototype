@@ -1,0 +1,61 @@
+{
+  "detektor": "TTA(YOLO(modele_k640_sorgo/model.pt))",
+  "split": "test",
+  "obrazow": 26,
+  "AP50": 0.6527,
+  "przy_progu": {
+    "prog": 0.15,
+    "trafione": 1040,
+    "falszywe": 656,
+    "pominiete": 588,
+    "precyzja": 0.6132,
+    "czulosc": 0.6388
+  },
+  "wedlug_dni": {
+    "2023-05-25": {
+      "prog": 0.15,
+      "trafione": 75,
+      "falszywe": 119,
+      "pominiete": 257,
+      "precyzja": 0.3866,
+      "czulosc": 0.2259,
+      "obrazow": 8
+    },
+    "2023-05-30": {
+      "prog": 0.15,
+      "trafione": 287,
+      "falszywe": 179,
+      "pominiete": 139,
+      "precyzja": 0.6159,
+      "czulosc": 0.6737,
+      "obrazow": 8
+    },
+    "2023-06-06": {
+      "prog": 0.15,
+      "trafione": 577,
+      "falszywe": 240,
+      "pominiete": 139,
+      "precyzja": 0.7062,
+      "czulosc": 0.8059,
+      "obrazow": 8
+    },
+    "2023-06-15": {
+      "prog": 0.15,
+      "trafione": 101,
+      "falszywe": 118,
+      "pominiete": 53,
+      "precyzja": 0.4612,
+      "czulosc": 0.6558,
+      "obrazow": 2
+    },
+    "razem": {
+      "prog": 0.15,
+      "trafione": 1040,
+      "falszywe": 656,
+      "pominiete": 588,
+      "precyzja": 0.6132,
+      "czulosc": 0.6388,
+      "obrazow": 26
+    }
+  }
+}

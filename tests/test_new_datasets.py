@@ -156,3 +156,51 @@ def test_xml_z_inna_nazwa_pliku_znajduje_zdjecie(tmp_path, tax):
     (kat / "bounding_boxes" / "img_20210824_D1_3_021.xml").write_text(XML.format(
         plik="img_20210824_D1_3_021.jpg", w=400, h=300, ob=OB.format(n="weed", a=1, b=1, c=30, d=30)))
     assert len(ewis1(kat, tax, z_sorgo=True)) == 1
+
+
+def test_ewis1_odlozony_dzien_do_testu(tmp_path, tax):
+    _ewis1(tmp_path / "e")                       # Loew_20220505 i Loew_20220512
+    r = {Path(x.obraz).name: x for x in ewis1(tmp_path / "e", tax, test_dni=["20220512"])}
+    assert r["Loew_20220512_Maize_010.png"].split == "test"
+    assert r["Loew_20220505_Maize_006.png"].split == "train"
+    assert r["Loew_20220505_Maize_006.png"].grupa == "ewis1_Loew_20220505"   # grupa = pole + dzien
+
+
+def test_budowa_z_odlozonym_dniem_i_ocena_wedlug_dni(tmp_path):
+    from models.evaluation import ocen_wedlug_grup
+    _ewis1(tmp_path / "e")
+    zbuduj({"ewis1": tmp_path / "e"}, tmp_path / "zb", tryb_klas="chwasty", proporcje=(1.0, 0.0, 0.0),
+           udzial_pustych=1.0, opcje_adapterow={"ewis1": {"test_dni": ["20220512"]}})
+    ds = tmp_path / "zb" / "dataset"
+    assert [p.name for p in (ds / "images" / "test").glob("*.jpg")] == ["ewis1__Loew_20220512_Maize_010.jpg"]
+    assert len(list((ds / "images" / "train").glob("*.jpg"))) == 1
+    # daty RRRRMMDD (EWIS1) i RRRR-MM-DD (WeedsGalore) w jednym formacie
+    p = {"ewis1__Loew_20220512_Maize_010": [(0, 0, 0, 10, 10)], "weedsgalore__2023-05-25__x": [(0, 0, 0, 10, 10)]}
+    w = ocen_wedlug_grup({k: [(0, 0.9, 0, 0, 10, 10)] for k in p}, p)
+    assert {"2022-05-12", "2023-05-25", "razem"} == set(w)
+
+
+def test_cli_ewis1_test_dni():
+    from normalization import build
+    zlap = {}
+
+    def falszywe(*a, **k):
+        zlap.update(k)
+        raise SystemExit(0)
+    stare, build.zbuduj = build.zbuduj, falszywe
+    try:
+        with pytest.raises(SystemExit):
+            build.main(["--ewis1", "x", "--ewis1-test-dni", "20220509", "20220512"])
+    finally:
+        build.zbuduj = stare
+    assert zlap["opcje_adapterow"]["ewis1"]["test_dni"] == ["20220509", "20220512"]
+
+
+def test_skrypt_drugiego_testu_bez_bledow_skladni():
+    r = subprocess.run(["bash", "-n", str(ROOT / "scripts" / "ewis1_test.sh")], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+
+
+def test_skrypt_kandydatow_bez_bledow_skladni():
+    r = subprocess.run(["bash", "-n", str(ROOT / "scripts" / "final_candidates.sh")], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr

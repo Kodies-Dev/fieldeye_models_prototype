@@ -1,0 +1,34 @@
+{
+  "detektor": "TTA(YOLO(modele_wg_sudars_s1/model.pt))",
+  "split": "test",
+  "obrazow": 132,
+  "AP50": 0.1406,
+  "przy_progu": {
+    "prog": 0.15,
+    "trafione": 74,
+    "falszywe": 112,
+    "pominiete": 4348,
+    "precyzja": 0.3978,
+    "czulosc": 0.0167
+  },
+  "wedlug_dni": {
+    "2022-05-16": {
+      "prog": 0.15,
+      "trafione": 74,
+      "falszywe": 112,
+      "pominiete": 4348,
+      "precyzja": 0.3978,
+      "czulosc": 0.0167,
+      "obrazow": 132
+    },
+    "razem": {
+      "prog": 0.15,
+      "trafione": 74,
+      "falszywe": 112,
+      "pominiete": 4348,
+      "precyzja": 0.3978,
+      "czulosc": 0.0167,
+      "obrazow": 132
+    }
+  }
+}

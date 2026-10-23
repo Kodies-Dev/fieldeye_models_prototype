@@ -1,0 +1,34 @@
+{
+  "detektor": "TTA(YOLO(modele_kolory_srgb_ewis1/model.pt))",
+  "split": "test",
+  "obrazow": 132,
+  "AP50": 0.8391,
+  "przy_progu": {
+    "prog": 0.15,
+    "trafione": 3561,
+    "falszywe": 567,
+    "pominiete": 861,
+    "precyzja": 0.8626,
+    "czulosc": 0.8053
+  },
+  "wedlug_dni": {
+    "2022-05-16": {
+      "prog": 0.15,
+      "trafione": 3561,
+      "falszywe": 567,
+      "pominiete": 861,
+      "precyzja": 0.8626,
+      "czulosc": 0.8053,
+      "obrazow": 132
+    },
+    "razem": {
+      "prog": 0.15,
+      "trafione": 3561,
+      "falszywe": 567,
+      "pominiete": 861,
+      "precyzja": 0.8626,
+      "czulosc": 0.8053,
+      "obrazow": 132
+    }
+  }
+}

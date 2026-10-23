@@ -1,10 +1,11 @@
 # Misja na Raspberry Pi 5 z AI HAT+ (Hailo-8): model koncowy skompilowany do .hef.
 #   python -m mission.cli pelna zdjecia/ -o wynik_misji/ --config configs/mission_hailo.yaml
-# Plik .hef jest w model_fin.zip (YOLOv8n, 1 klasa, HailoRT 4.23); scripts/check_hef.sh
-# wypakowuje go do hailo/ i sprawdza. Wejscie sieci (1280 x 1280) jest wbudowane w plik
-# .hef, wiec wejscie_sieci nie ma tu znaczenia.
+# Wejscie sieci (1280 x 1280) jest wbudowane w plik .hef, wiec wejscie_sieci nie ma tu znaczenia.
+# Model: dane_ewis1_bt (WeedsGalore + Sudars + EWIS1), skompilowany scripts/compile_hef.py.
+# Plik .hef lezy w katalogu repozytorium, tak jak oczekuje scripts/check_hef.sh:
+#   unzip -j model_fin.zip model_fin/fieldeye_final_1280_h8.hef
 detekcja:
-  model: hailo/fieldeye_final_1280_h8.hef
+  model: fieldeye_final_1280_h8.hef
   prog_pewnosci: 0.15        # dobrany na walidacji; NMS na ukladzie przepuszcza od 0,05
   kafelkowanie: true
   kafelek: 950               # ok. 1,5 m pola: Arducam 64MP w trybie 16 MP z 5 m

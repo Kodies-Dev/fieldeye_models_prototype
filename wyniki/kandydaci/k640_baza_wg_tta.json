@@ -1,0 +1,61 @@
+{
+  "detektor": "TTA(YOLO(modele_k640_baza/model.pt))",
+  "split": "test",
+  "obrazow": 26,
+  "AP50": 0.6475,
+  "przy_progu": {
+    "prog": 0.15,
+    "trafione": 1034,
+    "falszywe": 675,
+    "pominiete": 594,
+    "precyzja": 0.605,
+    "czulosc": 0.6351
+  },
+  "wedlug_dni": {
+    "2023-05-25": {
+      "prog": 0.15,
+      "trafione": 72,
+      "falszywe": 135,
+      "pominiete": 260,
+      "precyzja": 0.3478,
+      "czulosc": 0.2169,
+      "obrazow": 8
+    },
+    "2023-05-30": {
+      "prog": 0.15,
+      "trafione": 296,
+      "falszywe": 175,
+      "pominiete": 130,
+      "precyzja": 0.6285,
+      "czulosc": 0.6948,
+      "obrazow": 8
+    },
+    "2023-06-06": {
+      "prog": 0.15,
+      "trafione": 569,
+      "falszywe": 226,
+      "pominiete": 147,
+      "precyzja": 0.7157,
+      "czulosc": 0.7947,
+      "obrazow": 8
+    },
+    "2023-06-15": {
+      "prog": 0.15,
+      "trafione": 97,
+      "falszywe": 139,
+      "pominiete": 57,
+      "precyzja": 0.411,
+      "czulosc": 0.6299,
+      "obrazow": 2
+    },
+    "razem": {
+      "prog": 0.15,
+      "trafione": 1034,
+      "falszywe": 675,
+      "pominiete": 594,
+      "precyzja": 0.605,
+      "czulosc": 0.6351,
+      "obrazow": 26
+    }
+  }
+}

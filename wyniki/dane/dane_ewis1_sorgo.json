@@ -1,0 +1,50 @@
+{
+  "model": "modele_dane_ewis1_sorgo/model.pt",
+  "jeden_prog": {
+    "2023-05-25": {
+      "prog": 0.15,
+      "trafione": 97,
+      "falszywe": 152,
+      "pominiete": 235,
+      "precyzja": 0.3896,
+      "czulosc": 0.2922,
+      "obrazow": 8
+    },
+    "2023-05-30": {
+      "prog": 0.15,
+      "trafione": 309,
+      "falszywe": 233,
+      "pominiete": 117,
+      "precyzja": 0.5701,
+      "czulosc": 0.7254,
+      "obrazow": 8
+    },
+    "2023-06-06": {
+      "prog": 0.15,
+      "trafione": 601,
+      "falszywe": 253,
+      "pominiete": 115,
+      "precyzja": 0.7037,
+      "czulosc": 0.8394,
+      "obrazow": 8
+    },
+    "2023-06-15": {
+      "prog": 0.15,
+      "trafione": 113,
+      "falszywe": 161,
+      "pominiete": 41,
+      "precyzja": 0.4124,
+      "czulosc": 0.7338,
+      "obrazow": 2
+    },
+    "razem": {
+      "prog": 0.15,
+      "trafione": 1120,
+      "falszywe": 799,
+      "pominiete": 508,
+      "precyzja": 0.5836,
+      "czulosc": 0.688,
+      "obrazow": 26
+    }
+  }
+}

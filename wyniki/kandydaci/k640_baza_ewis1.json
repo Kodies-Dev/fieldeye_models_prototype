@@ -1,0 +1,34 @@
+{
+  "detektor": "YOLO(modele_k640_baza/model.pt)",
+  "split": "test",
+  "obrazow": 132,
+  "AP50": 0.7904,
+  "przy_progu": {
+    "prog": 0.15,
+    "trafione": 3527,
+    "falszywe": 1370,
+    "pominiete": 895,
+    "precyzja": 0.7202,
+    "czulosc": 0.7976
+  },
+  "wedlug_dni": {
+    "2022-05-16": {
+      "prog": 0.15,
+      "trafione": 3527,
+      "falszywe": 1370,
+      "pominiete": 895,
+      "precyzja": 0.7202,
+      "czulosc": 0.7976,
+      "obrazow": 132
+    },
+    "razem": {
+      "prog": 0.15,
+      "trafione": 3527,
+      "falszywe": 1370,
+      "pominiete": 895,
+      "precyzja": 0.7202,
+      "czulosc": 0.7976,
+      "obrazow": 132
+    }
+  }
+}
