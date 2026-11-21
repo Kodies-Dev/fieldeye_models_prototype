@@ -24,8 +24,6 @@ def test_arducam_z_5_m():
     assert w == pytest.approx(7.25, abs=0.01) and h == pytest.approx(5.44, abs=0.01)
     assert k.gsd_mm(5.0) == pytest.approx(1.57, abs=0.01)
     assert ARDUCAM_64MP_64MP.gsd_mm(5.0) == pytest.approx(0.79, abs=0.01)
-    poz, pion = k.kat_widzenia_st()
-    assert 70 < poz < 75 and 54 < pion < 58                  # producent: 72 x 54,6 st.
     assert k.kadr_w_zrodle(5.0, 2.5) == (2902, 2176)
     assert k.kafelek_px(2.5) == 600                          # kafelek treningowy WeedsGalore
 

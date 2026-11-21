@@ -1,7 +1,7 @@
 # normalizacja — co trzeba zrobić
 
-Cztery zbiory (**WeedsGalore, CoFly-WeedDB, Sudars, WeedMaize**) plus dane własne
-mają dać jeden zbiór treningowy w formacie YOLO.
+Trzy zbiory (**WeedsGalore, Sudars, EWIS1**) plus w przyszłości dane własne
+mają dać zbiory treningowe w formacie YOLO. Całość robi krok 1 w `scripts/final_model.sh`.
 
 **Kod jest napisany i przetestowany** — opis działania w `HOW_IT_WORKS.md`.
 Ten plik to lista zadań, które zostały **dla człowieka**: rzeczy wymagających
@@ -16,19 +16,16 @@ pobrania danych, decyzji albo sprawdzenia wzrokiem.
 | WeedsGalore | `--weedsgalore` | dron 5 m, kukurydza, 4 dni, maski | trening, **walidacja i test** (oficjalny podział) |
 | Sudars | `--sudars` | z ziemi, warzywa | trening |
 | EWIS1 | `--ewis1` | dron 5 m, kukurydza (domyślnie bez sorgo), ramki z XML | trening; odłożony dzień = drugi test |
-| PhenoBench | `--phenobench` | dron, burak cukrowy, 3 fazy, maski instancji | trening |
-| WeedMaize | `--weedmaize` | z 1,3 m, kukurydza V1–V3 | trening (opcjonalnie) |
-| CoFly | `--cofly` | dron, bawełna, oznaczone tylko 3 gatunki | **nieużywany**: nieoznaczone chwasty uczyłyby model, że chwast to tło |
 | własne | `--wlasne` | zdjęcia z naszego drona | na przyszły sezon |
 
 | Opcja | Do czego |
 |---|---|
 | `--tryb-klas chwasty` | jedna klasa „chwast”; uprawy są tłem |
-| `--skala ZRODLO=WSP` | zmniejszenie zdjęć do skali drona (2,5 mm/px), np. `ewis1=0.47`, `weedmaize=0.144` |
-| `--maks-zdjec ZRODLO=N` | najwyżej N zdjęć ze źródła |
+| `--skala ZRODLO=WSP` | zmniejszenie zdjęć do skali drona (2,5 mm/px), np. `ewis1=0.47` |
 | `--proporcje 1 0 0` | wszystko do treningu (zbiory pomocnicze) |
 | `--ewis1-z-sorgo` | EWIS1 także z sorgo i zdjęciami bez nazwy uprawy |
 | `--ewis1-test-dni 20220509` | EWIS1: wskazane dni lotu do testu, reszta do treningu |
+| `--weedsgalore-kolory srgb` | WeedsGalore z korektą gamma, jak zwykły aparat (domyślnie `liniowe`, jak w modelu końcowym) |
 
 Po każdej budowie sprawdź w podsumowaniu linijkę `nierozpoznane` (ma być „brak”)
 i obejrzyj kilka obrazów w `podglad/`.
@@ -62,9 +59,8 @@ Jeśli tak — środowisko jest gotowe i możesz pobierać prawdziwe dane.
 |---|---|---|
 | WeedsGalore | https://doidata.gfz.de/weedsgalore_e_celikkan_2024/ (plik `weedsgalore-dataset`) | 0,4 GB |
 | — podział autorów | jest w archiwum (`weedsgalore-dataset\splits\`), adapter znajduje go sam | — |
-| CoFly-WeedDB | https://zenodo.org/record/6697343 | ~436 MB |
 | Sudars | https://data.mendeley.com/datasets/nj4vtk4tt6/1 | — |
-| WeedMaize | https://doi.org/10.5281/zenodo.5106795 (train_set, validation_set, test_set) | ~5,6 GB |
+| EWIS1 | „EWIS1 Maize, Sorghum & Weed Dataset” (Mendeley Data) | — |
 
 Struktura, której oczekują adaptery:
 
@@ -73,9 +69,8 @@ dane/
 ├── weedsgalore-dataset/2023-05-25/images/<id>_R.png ... _RE.png
 │                                 /semantics/<id>.png
 │                                 /instances/<id>.png
-├── CoFly-WeedDB/images/, labels/, labels_1d/
 ├── sudars/dataset/raw images/*.jpg + annotations/*.xml
-└── weedmaize/train_set/, validation_set/, test_set/   (jpg + xml razem)
+└── EWIS1 Maize, Sorghum & Weed Dataset/   (albo ewis1/) images/, bounding_boxes/*.xml, masks/
 ```
 
 Jeśli po rozpakowaniu układ jest inny, nie przestawiaj plików na siłę — zgłoś,
@@ -112,13 +107,13 @@ złych nazw, a wyniki per klasa byłyby bez sensu.
 
 ## Zadanie 3. Zbudować zbiór i obejrzeć wynik
 
+Tak jak krok 1 w `scripts/final_model.sh` (trzy osobne zbiory):
+
 ```bash
-python -m normalization.build \
-    --weedsgalore dane/weedsgalore-dataset \
-    --cofly       dane/CoFly-WeedDB \
-    --sudars      dane/sudars/dataset \
-    --weedmaize   dane/weedmaize \
-    -o zbior --tryb-klas binarnie
+python -m normalization.build --weedsgalore dane/weedsgalore-dataset -o zbior_lotnicze --tryb-klas chwasty
+python -m normalization.build --sudars dane/sudars/dataset -o zbior_naziemne --tryb-klas chwasty
+python -m normalization.build --ewis1 dane/ewis1 -o zbior_ewis1_podzial --tryb-klas chwasty \
+    --skala ewis1=0.47 --proporcje 1 0 0 --ewis1-test-dni 20220516
 ```
 
 Program wypisze na koniec podsumowanie. **Trzy rzeczy wymagają reakcji:**
@@ -247,12 +242,10 @@ moje_misje/
 - [ ] Kontrola przeszła:
 
 ```bash
-python -m models.cli sprawdz  zbior/dataset/data.yaml
-python -m models.cli rozmiary zbior/dataset --split train
+python -m models.cli sprawdz zbior/dataset/data.yaml
 ```
 
-Pierwsza komenda musi zwrócić „Dane wyglądają poprawnie". Druga pokaże rozkład
-rozmiarów obiektów — przy udziale małych powyżej 50% kafelkowanie jest konieczne.
+Komenda musi zwrócić „Dane wyglądają poprawnie".
 
 ---
 

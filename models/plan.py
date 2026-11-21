@@ -1,22 +1,20 @@
-"""Plan treningu trzyetapowego - konfiguracja, bez zaleznosci od ultralytics.
+"""Plan treningu - konfiguracja, bez zaleznosci od ultralytics.
 
-Dlaczego trzy etapy, a nie jedna wspolna pula:
+Plan to lista etapow; kazdy kolejny etap startuje z wag poprzedniego.
+Model koncowy (scripts/final_model.sh) uzywa JEDNEGO etapu na polaczonych danych
+(WeedsGalore z nadprobkowaniem + Sudars + EWIS1, jeden data.yaml z nadprobkuj()).
+Sudars stanowi tam wiekszosc treningu (1438 z 1866 kafelkow), ale walidacja - czyli
+wybor najlepszej epoki - i test sa tylko z WeedsGalore, wiec model jest wybierany
+pod perspektywe drona. Plan czytany z pliku plan_dane_ewis1_bt.json:
+    {"model_bazowy": "yolov8n.pt", "batch": 16, "cierpliwosc": 30, "seed": 0,
+     "etapy": [{"nazwa": "dane-ewis1-bt", "dane": "zbior_lotnicze/dataset/data_dane_ewis1_bt.yaml",
+                "epoki": 100, "lr0": 0.01, "wejscie": 1280}]}
 
-  Danych naziemnych (Sudars, WeedMaize) jest kilkukrotnie wiecej niz lotniczych
-  (WeedsGalore, CoFly). W jednej puli zdominowalyby trening i model
-  zoptymalizowalby sie pod perspektywe, ktorej nigdy nie zobaczy w locie.
-
-  etap 1  naziemne   - ogolna charakterystyka roslin, od wag COCO, duzo epok
-  etap 2  lotnicze   - perspektywa z gory, od wag etapu 1, lr0 0.01 (patrz nizej)
-  etap 3  wlasne     - nasza kamera, gleba, pole; najnizsze lr, najmniej epok
-
-Kazdy kolejny etap startuje z wag poprzedniego.
-
-Pierwotnie etap 2 mial lr0 0.001 ("uczy sie wolniej, zeby nie zapomniec").
-Ablacja na WeedsGalore (104 obrazy, 100 epok) to obalila: lr0 0.001 dalo
-mAP50 0.572, a lr0 0.01 - 0.624 (test). Na tak malym zbiorze nizsze tempo
-nie zdazylo dostosowac modelu. Etap 3 (dane wlasne) zostaje przy 0.0005 -
-NIESPRAWDZONE, zmierzyc, gdy beda dane.
+Co jest w pliku:
+    Stage           - jeden etap: dane, epoki, lr0, wejscie, augmentacje
+    TrainingPlan    - caly plan: model startowy, etapy, batch, cierpliwosc, seed, optymalizator
+    katalog_etykiet - images/train -> labels/train
+    sprawdz_dane()  - kontrola data.yaml przed treningiem (brak etykiet, puste foldery, przeciek)
 """
 
 from dataclasses import asdict, dataclass, field
@@ -25,11 +23,28 @@ from pathlib import Path
 try:
     import yaml
 except ImportError:
-    yaml = None
+    yaml = None                    # bez PyYAML dzialaja tylko plany .json
 
 
 @dataclass
 class Stage:
+    """Jeden etap treningu.
+
+    Po co: opis jednego przebiegu ultralytics - na jakich danych, ile epok, jakie lr.
+
+    Pola:
+        nazwa             - nazwa etapu = nazwa folderu wynikow, np. "dane-ewis1-bt"
+        dane              - sciezka do data.yaml, np. "zbior_lotnicze/dataset/data_dane_ewis1_bt.yaml"
+        epoki             - maks. liczba epok, np. 100 (early stopping moze skonczyc wczesniej)
+        lr0               - poczatkowe tempo uczenia (learning rate), np. 0.01
+        wejscie           - bok obrazu na wejsciu sieci w px, np. 1280
+        zamrozone_warstwy - ile pierwszych warstw sieci nie uczyc, 0 = wszystkie sie ucza
+        opis              - opis dla ludzi
+        augmentacje       - dodatkowe opcje augmentacji ultralytics, np. {"degrees": 15, "flipud": 0.5}
+
+    Uzywana w:
+        TrainingPlan.etapy, training.py trenuj() (etap po etapie)
+    """
     nazwa: str
     dane: str                      # sciezka do data.yaml
     epoki: int
@@ -44,12 +59,37 @@ class Stage:
     augmentacje: dict = field(default_factory=dict)
 
     def slownik(self):
+        """Etap jako slownik (do zapisu w JSON i do historii treningu).
+
+        Zwraca:
+            dict, np. {"nazwa": "dane-ewis1-bt", "dane": "...", "epoki": 100, "lr0": 0.01, ...}
+
+        Uzywana w:
+            TrainingPlan.slownik() (ten plik), training.py (historia etapow)
+        """
         return asdict(self)
 
 
 @dataclass
 class TrainingPlan:
-    """Caly plan. model_bazowy to punkt startu etapu 1."""
+    """Caly plan. model_bazowy to punkt startu pierwszego etapu.
+
+    Po co: wszystkie ustawienia treningu w jednym miejscu, zapisywalne do pliku
+           (zeby trening dalo sie powtorzyc z tymi samymi parametrami).
+
+    Pola:
+        model_bazowy  - wagi startowe, np. "yolov8n.pt" (YOLOv8 nano, wagi COCO)
+        etapy         - lista Stage
+        batch         - ile obrazow naraz, np. 16
+        cierpliwosc   - early stopping: stop po tylu epokach bez poprawy na walidacji, np. 30
+        urzadzenie    - None = auto (CUDA -> MPS -> CPU), "cpu", "0" (pierwsza karta)
+        wyjscie       - folder wynikow, np. "modele_dane_ewis1_bt" (ustawia cli z -o)
+        seed          - ziarno losowania (powtarzalnosc), np. 0
+        optymalizator - "SGD"; jawnie, bo inaczej ultralytics sam dobiera lr i ignoruje lr0
+
+    Uzywana w:
+        models/cli.py cmd_trenuj() (wczytaj), training.py trenuj()
+    """
     model_bazowy: str = "yolov8n.pt"
     etapy: list = field(default_factory=list)
     batch: int = 16
@@ -58,32 +98,21 @@ class TrainingPlan:
     wyjscie: str = "modele_out"
     seed: int = 0
     # Jawny optymalizator jest potrzebny, zeby lr0 z planu bylo uzywane.
-    # Wartosci lr0 w planie domyslnym (0.01 / 0.001 / 0.0005) sa dobrane pod SGD.
     optymalizator: str = "SGD"
-
-    @staticmethod
-    def domyslny(dane_naziemne=None, dane_lotnicze=None, dane_wlasne=None,
-                 model_bazowy="yolov8n.pt", wejscie=640):
-        """Plan z zalecanymi parametrami. Etapy bez danych sa pomijane."""
-        etapy = []
-        if dane_naziemne:
-            etapy.append(Stage(
-                "1-naziemne", dane_naziemne, epoki=100, lr0=0.01, wejscie=wejscie,
-                opis="ogolna charakterystyka roslin; start z wag COCO"))
-        if dane_lotnicze:
-            etapy.append(Stage(
-                "2-lotnicze", dane_lotnicze, epoki=100, lr0=0.01, wejscie=wejscie,
-                opis="przystosowanie do perspektywy z nadiru"))
-        if dane_wlasne:
-            etapy.append(Stage(
-                "3-wlasne", dane_wlasne, epoki=30, lr0=0.0005, wejscie=wejscie,
-                opis="nasza kamera, gleba i uprawa; etap obowiazkowy"))
-        if not etapy:
-            raise ValueError("podaj dane co najmniej jednego etapu")
-        return TrainingPlan(model_bazowy=model_bazowy, etapy=etapy)
 
     @classmethod
     def wczytaj(cls, sciezka):
+        """Plan z pliku .json albo .yaml.
+
+        Argumenty:
+            sciezka - plik planu, np. "plan_dane_ewis1_bt.json"
+
+        Zwraca:
+            TrainingPlan (etapy zamienione na obiekty Stage; brakujace pola - wartosci domyslne)
+
+        Uzywana w:
+            models/cli.py cmd_trenuj() (--plan) - scripts/final_model.sh, krok 2
+        """
         tekst = Path(sciezka).read_text(encoding="utf-8")
         if Path(sciezka).suffix in (".yaml", ".yml"):
             if yaml is None:
@@ -92,10 +121,21 @@ class TrainingPlan:
         else:
             import json
             dane = json.loads(tekst)
-        etapy = [Stage(**e) for e in dane.pop("etapy", [])]
-        return cls(etapy=etapy, **dane)
+        etapy = [Stage(**e) for e in dane.pop("etapy", [])]   # slowniki -> Stage
+        return cls(etapy=etapy, **dane)                       # reszta pol wprost do TrainingPlan
 
     def zapisz(self, sciezka):
+        """Zapisuje plan do JSON.
+
+        Argumenty:
+            sciezka - plik wyniku, np. "modele_x/plan.json"
+
+        Zwraca:
+            Path zapisanego pliku
+
+        Uzywana w:
+            training.py - kopia planu obok modelu (wiadomo, jak go uczono)
+        """
         import json
         p = Path(sciezka)
         p.parent.mkdir(parents=True, exist_ok=True)
@@ -104,6 +144,14 @@ class TrainingPlan:
         return p
 
     def slownik(self):
+        """Plan jako slownik (etapy tez jako slowniki).
+
+        Zwraca:
+            dict, np. {"model_bazowy": "yolov8n.pt", "etapy": [{...}], "batch": 16, ...}
+
+        Uzywana w:
+            zapisz() (ten plik)
+        """
         d = asdict(self)
         d["etapy"] = [e.slownik() if hasattr(e, "slownik") else e for e in self.etapy]
         return d
@@ -116,9 +164,19 @@ def katalog_etykiet(katalog_obrazow):
     Dziala na czesciach sciezki, nie na tekscie - zamiana "/images/" na
     "/labels/" w napisie nie dzialala na Windowsie, gdzie separatorem jest
     backslash, i kazdy obraz wygladal na pozbawiony etykiet.
+
+    Argumenty:
+        katalog_obrazow - Path, np. Path("zbior_lotnicze/dataset/images/train")
+
+    Zwraca:
+        Path, np. Path("zbior_lotnicze/dataset/labels/train"); bez "images" - ta sama sciezka
+
+    Uzywana w:
+        sprawdz_dane() (ten plik), season.py, evaluation.py,
+        mission/sim_flight.py, mission/drone_sim.py, app.py
     """
     czesci = list(katalog_obrazow.parts)
-    for i in range(len(czesci) - 1, -1, -1):
+    for i in range(len(czesci) - 1, -1, -1):          # od konca sciezki
         if czesci[i] == "images":
             czesci[i] = "labels"
             return type(katalog_obrazow)(*czesci)
@@ -129,6 +187,20 @@ def sprawdz_dane(sciezka_yaml):
     """Kontrola data.yaml PRZED treningiem - tansze niz odkrycie bledu po godzinie.
 
     Zwraca (ok, lista_problemow, informacje).
+
+    Sprawdza: czy sa klasy, czy foldery train/val (test opcjonalny) istnieja i maja obrazy,
+    czy kazdy obraz ma plik etykiet, czy te same pliki nie sa w dwoch czesciach (przeciek).
+
+    Argumenty:
+        sciezka_yaml - data.yaml, np. "zbior_lotnicze/dataset/data_dane_ewis1_bt.yaml"
+
+    Zwraca:
+        (ok, problemy, info), np. (True, [], {"klasy": ["chwast"],
+        "train": {"obrazow": 1866, "bez_etykiet": 0}, "val": {...}, "test": {...}})
+
+    Uzywana w:
+        training.py trenuj() - przed kazdym etapem (blad = koniec bez treningu),
+        models/cli.py (komenda sprawdz), tests/test_season.py
     """
     problemy, info = [], {}
     p = Path(sciezka_yaml)
@@ -141,11 +213,12 @@ def sprawdz_dane(sciezka_yaml):
 
     nazwy = dane.get("names")
     if isinstance(nazwy, dict):
-        nazwy = [nazwy[k] for k in sorted(nazwy, key=lambda x: int(x))]
+        nazwy = [nazwy[k] for k in sorted(nazwy, key=lambda x: int(x))]   # {0: "chwast"} -> ["chwast"]
     if not nazwy:
         problemy.append("data.yaml nie ma listy klas (names)")
     info["klasy"] = nazwy or []
 
+    # folder bazowy: pole "path" z data.yaml (albo folder samego pliku)
     baza = Path(dane.get("path", p.parent))
     if not baza.is_absolute():
         baza = (p.parent / baza).resolve()
@@ -157,7 +230,7 @@ def sprawdz_dane(sciezka_yaml):
             if czesc != "test":
                 problemy.append(f"brak sekcji '{czesc}' w data.yaml")
             continue
-        # Ultralytics dopuszcza liste katalogow, np. train: [WeedsGalore, CoFly]
+        # Ultralytics dopuszcza liste katalogow, np. train: [WeedsGalore, Sudars, EWIS1]
         lista = wzgl if isinstance(wzgl, list) else [wzgl]
         razem_obr, razem_bez = 0, 0
         katalogi_czesci[czesc] = []
@@ -185,8 +258,8 @@ def sprawdz_dane(sciezka_yaml):
                     for c, kats in katalogi_czesci.items()}
     czesci = list(nazwy_czesci)
     for i, a in enumerate(czesci):
-        for b in czesci[i + 1:]:
-            wspolne = nazwy_czesci[a] & nazwy_czesci[b]
+        for b in czesci[i + 1:]:                       # kazda para czesci raz
+            wspolne = nazwy_czesci[a] & nazwy_czesci[b]   # & = czesc wspolna zbiorow
             if wspolne:
                 problemy.append(f"PRZECIEK: {len(wspolne)} tych samych plikow "
                                 f"w '{a}' i '{b}' (np. {sorted(wspolne)[0]})")

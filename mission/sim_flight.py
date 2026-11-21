@@ -1,15 +1,18 @@
-"""Symulowany lot z detekcja chwastow: wspolny dla zakladki 4 interfejsu i komendy.
+"""Symulowany lot nad polem z kafelkow - funkcje zakladki 4 interfejsu (app.py) i symulowanego drona.
 
-    from mission.sim_flight import pole_z_kafelkow, lot_z_detekcja
-    pole, prawda = pole_z_kafelkow(kafelki_dnia, z_etykietami=True)
-    w = lot_z_detekcja(pole, prawda, detektor, SimSettings(kadr=600), "lot/")
-    w["porownanie"], w["porownanie_fuzja"]       # (trafione, pominiete, falszywe) na mozaice
+    from mission.sim_flight import kafelki_wedlug_dni, pole_z_kafelkow
+    pole, prawda = pole_z_kafelkow(kafelki_wedlug_dni(katalog)["2023-05-25"], z_etykietami=True)
 
-Kolejno: ciecie pola na kadry (symulator), detekcja na kazdym kadrze (z kafelkami,
-jesli kadr jest duzy), skladanie mozaiki, przeniesienie ramek na mozaike i dwa
-sposoby laczenia wykryc tego samego chwastu z kilku kadrow:
-  - scalanie (dotychczas): zostaje najpewniejsza ramka z tych, ktore przeszly prog,
-  - laczenie widokow (mission.fusion): slabe wykrycia z kilku kadrow sumuja sie.
+Skad pole do lotu:
+    pole_z_kafelkow()  - kafelki WeedsGalore z jednego dnia sklejone w siatke
+    pole_ze_zdjecia()  - zdjecie EWIS1 odtworzone z jego kafelkow (..._k{x}_{y}), co do piksela
+
+Po detekcji na kadrach: prawda_w_kadrze() (prawdziwe ramki w kadrze), scal_ramki()
+(ten sam chwast z kilku kadrow -> jedna ramka), porownaj() (trafione / pominiete / falszywe),
+rysuj_ramki() (podglad).
+
+Uzywany w:
+    app.py zakladka 4, mission/drone_sim.py (--ewis1), tests/test_sim_tiles.py, test_gui_flight.py
 """
 
 import re
@@ -20,23 +23,135 @@ import numpy as np
 
 from models.evaluation import pr_przy_progach
 from models.plan import katalog_etykiet
-from stitchlive.flight_sim import macierz_kadru, rozloz
-from stitchlive.global_stitcher import GlobalStitcher
+from stitchlive.flight_sim import macierz_kadru
 
-from .detector import TiledDetector
-from .fusion import polacz
+from .detector import iou_ramek
 
 ZIELONY, ROZOWY = (60, 200, 60), (255, 0, 255)
 
 
 def kafelki_wedlug_dni(katalog):
-    """{dzien lotu: [pliki]} - dzien z nazwy pliku (RRRR-MM-DD), reszta jako "bez daty"."""
+    """{dzien lotu: [pliki]} - dzien z nazwy pliku (RRRR-MM-DD), reszta jako "bez daty".
+
+    Argumenty:
+        katalog - folder kafelkow, np. "zbior_lotnicze/dataset/images/test"
+
+    Zwraca:
+        dict, np. {"2023-05-25": [Path(...), ...], "2023-06-06": [...]}
+
+    Uzywana w:
+        app.py zakladka 4, tests
+    """
     dni = {}
     for p in sorted(Path(katalog).glob("*")):
         if p.suffix.lower() in (".jpg", ".jpeg", ".png"):
             m = re.search(r"\d{4}-\d{2}-\d{2}", p.name)
             dni.setdefault(m.group(0) if m else "bez daty", []).append(p)
     return dni
+
+
+WZOR_KAFELKA = re.compile(r"^(?P<zdjecie>.+)_k(?P<x>\d+)_(?P<y>\d+)$")
+
+
+def zdjecia_z_kafelkow(pliki):
+    """{zdjecie zrodlowe: [(x, y, plik)]} dla kafelkow z polozeniem w nazwie (..._k{x}_{y}).
+
+    Tak nazywa kafelki normalizacja, gdy tnie wieksze zdjecie (np. EWIS1): x, y to
+    lewy gorny rog kafelka na zdjeciu. Kafelki bez polozenia w nazwie (WeedsGalore:
+    jedno zdjecie = jeden kafelek) sa pomijane.
+
+    Argumenty:
+        pliki - sciezki kafelkow, np. Path("zbior_ewis1_podzial/dataset/images/test").glob("*")
+
+    Zwraca:
+        dict, np. {"ewis1__Loew_20220516_Maize_003": [(0, 0, p1), (806, 0, p2), ...]}
+        (kafelki posortowane wierszami; tylko zdjecia z co najmniej 2 kafelkami)
+
+    Uzywana w:
+        mission/drone_sim.py (--ewis1), tests
+    """
+    out = {}
+    for p in pliki:
+        p = Path(p)
+        if p.suffix.lower() not in (".jpg", ".jpeg", ".png"):
+            continue
+        m = WZOR_KAFELKA.match(p.stem)
+        if m:
+            out.setdefault(m["zdjecie"], []).append((int(m["x"]), int(m["y"]), p))
+    return {k: sorted(v, key=lambda t: (t[1], t[0])) for k, v in sorted(out.items()) if len(v) >= 2}
+
+
+def _scal_powtorzone(ramki, prog=0.6):
+    """Ten sam chwast z dwoch zachodzacych kafelkow -> jedna ramka.
+
+    Na kafelku chwast przy krawedzi bywa przyciety, wiec zostaje wieksza ramka,
+    a mniejsza odpada, gdy co najmniej `prog` jej powierzchni lezy w wiekszej.
+
+    Argumenty:
+        ramki - lista (x0, y0, x1, y1) w px odtworzonego zdjecia
+        prog  - jaka czesc mniejszej ramki musi lezec w wiekszej, np. 0.6
+
+    Zwraca:
+        lista ramek bez powtorzen
+
+    Uzywana w:
+        pole_ze_zdjecia() (ten plik)
+    """
+    pole = lambda r: max(0.0, r[2] - r[0]) * max(0.0, r[3] - r[1])
+    out = []
+    for r in sorted(ramki, key=pole, reverse=True):
+        a = pole(r)
+        if a <= 0:
+            continue
+        if any(max(0.0, min(r[2], q[2]) - max(r[0], q[0])) * max(0.0, min(r[3], q[3]) - max(r[1], q[1]))
+               >= prog * a for q in out):
+            continue
+        out.append(r)
+    return out
+
+
+def pole_ze_zdjecia(kafelki, z_etykietami=False):
+    """Odtwarza zdjecie zrodlowe z jego kafelkow - ciagle pole bez powtorzen.
+
+    Kafelki lezacego obok siebie w siatce (pole_z_kafelkow) zachodza na siebie,
+    wiec te same rosliny bylyby w polu dwa razy i mozaika sie nie sklada. Tu kazdy
+    kafelek trafia dokladnie tam, skad zostal wyciety, a obszary zakladki pokrywaja
+    sie co do piksela. `kafelki` to lista (x, y, plik) z zdjecia_z_kafelkow().
+
+    Argumenty:
+        kafelki      - lista (x, y, plik) jednego zdjecia
+        z_etykietami - True = zwroc tez prawdziwe ramki z plikow YOLO
+
+    Zwraca:
+        obraz BGR (h, w, 3) albo (obraz, ramki) przy z_etykietami; None, gdy nic sie nie wczytalo
+
+    Uzywana w:
+        mission/drone_sim.py (--ewis1), tests
+    """
+    obrazy = [(x, y, cv2.imread(str(p)), Path(p)) for x, y, p in kafelki]
+    obrazy = [o for o in obrazy if o[2] is not None]
+    if not obrazy:
+        return None
+    W = max(x + o.shape[1] for x, _, o, _ in obrazy)
+    H = max(y + o.shape[0] for _, y, o, _ in obrazy)
+    pole = np.zeros((H, W, 3), np.uint8)
+    for x, y, o, _ in obrazy:
+        pole[y:y + o.shape[0], x:x + o.shape[1]] = o
+    if not z_etykietami:
+        return pole
+    ramki = []
+    for x, y, o, p in obrazy:
+        h, w = o.shape[:2]
+        et = katalog_etykiet(p.parent) / (p.stem + ".txt")
+        if not et.exists():
+            continue
+        for linia in et.read_text().split("\n"):
+            cz = linia.split()
+            if len(cz) >= 5:
+                cx, cy, bw, bh = (float(v) for v in cz[1:5])
+                ramki.append((x + (cx - bw / 2) * w, y + (cy - bh / 2) * h,
+                              x + (cx + bw / 2) * w, y + (cy + bh / 2) * h))
+    return pole, _scal_powtorzone(ramki)
 
 
 def pole_z_kafelkow(pliki, ile=25, z_etykietami=False):
@@ -46,6 +161,17 @@ def pole_z_kafelkow(pliki, ile=25, z_etykietami=False):
     sfotografowane kilka razy - kafelki z roznych dni pokazuja te same miejsca,
     a to samo miejsce w dwoch punktach siatki to dla skladacza sprzecznosc
     i mozaika sie nie sklada.
+
+    Argumenty:
+        pliki        - kafelki jednego dnia
+        ile          - najwyzej tyle kafelkow, np. 25 (siatka 5x5; tylko pelne wiersze)
+        z_etykietami - True = zwroc tez prawdziwe ramki przeniesione na sklejke
+
+    Zwraca:
+        obraz BGR albo (obraz, ramki); None, gdy kafelkow mniej niz 4
+
+    Uzywana w:
+        app.py zakladka 4, tests
     """
     pliki = list(pliki)[:ile]
     if len(pliki) < 4:
@@ -80,6 +206,19 @@ def prawda_w_kadrze(prawda, kadr_info, kadr, min_widocznosc=0.4, kadr_wys=None):
     Macierz symulatora przenosi piksel kadru na zrodlo, wiec do kadru idziemy
     jej odwrotnoscia. Ramka obcieta krawedzia kadru zostaje, gdy widac co
     najmniej min_widocznosc jej powierzchni - tak samo jak przy kafelkowaniu.
+
+    Argumenty:
+        prawda         - ramki (x0, y0, x1, y1) na zrodle (polu)
+        kadr_info      - opis kadru z prawda.json symulatora: srodek, kat_st, zasieg_px, kadr_px
+        kadr           - szerokosc kadru w px, np. 600
+        min_widocznosc - jaka czesc ramki musi byc w kadrze, np. 0.4
+        kadr_wys       - wysokosc kadru albo None (z kadr_info)
+
+    Zwraca:
+        lista (x0, y0, x1, y1) w px kadru
+
+    Uzywana w:
+        app.py zakladka 4, tests
     """
     kh = kadr_wys or (kadr_info.get("kadr_px") or [kadr, kadr])[1]
     M = macierz_kadru(*kadr_info["srodek"], kadr_info["kat_st"], kadr_info["zasieg_px"], kadr, kh)
@@ -96,13 +235,40 @@ def prawda_w_kadrze(prawda, kadr_info, kadr, min_widocznosc=0.4, kadr_wys=None):
 
 
 def porownaj(wykryte, prawdziwe, iou=0.5):
-    """-> (trafione, pominiete, falszywe) dla jednego obrazu."""
+    """-> (trafione, pominiete, falszywe) dla jednego obrazu.
+
+    Argumenty:
+        wykryte    - ramki (x0, y0, x1, y1, pewnosc)
+        prawdziwe  - ramki (x0, y0, x1, y1)
+        iou        - minimalne IoU trafienia, np. 0.5
+
+    Zwraca:
+        krotka, np. (12, 3, 2)
+
+    Uzywana w:
+        app.py zakladka 4
+    """
     w = pr_przy_progach({"x": [(0, r[4], *r[:4]) for r in wykryte]},
                         {"x": [(0, *r[:4]) for r in prawdziwe]}, [0.0], iou)[0]
     return w["trafione"], w["pominiete"], w["falszywe"]
 
 
 def rysuj_ramki(img, ramki, grubosc=2, kolor=ROZOWY, kopia=True):
+    """Rysuje prostokaty na obrazie.
+
+    Argumenty:
+        img     - obraz BGR
+        ramki   - lista (x0, y0, x1, y1, ...) - dalsze pola (np. pewnosc) pomijane
+        grubosc - grubosc linii w px
+        kolor   - BGR, np. ROZOWY (wykryte) albo ZIELONY (prawdziwe)
+        kopia   - True = rysuj na kopii, False = na tym samym obrazie
+
+    Zwraca:
+        obraz z ramkami
+
+    Uzywana w:
+        app.py zakladka 4
+    """
     out = img.copy() if kopia else img
     for x0, y0, x1, y1, *_ in ramki:
         cv2.rectangle(out, (int(x0), int(y0)), (int(x1), int(y1)), kolor, grubosc)
@@ -110,109 +276,22 @@ def rysuj_ramki(img, ramki, grubosc=2, kolor=ROZOWY, kopia=True):
 
 
 def scal_ramki(ramki, prog_iou=0.3):
-    """Ten sam chwast z kilku kadrow -> jedna ramka (zostaje najpewniejsza)."""
-    def iou(a, b):
-        x0, y0, x1, y1 = max(a[0], b[0]), max(a[1], b[1]), min(a[2], b[2]), min(a[3], b[3])
-        if x1 <= x0 or y1 <= y0:
-            return 0.0
-        wsp = (x1 - x0) * (y1 - y0)
-        return wsp / ((a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - wsp)
+    """Ten sam chwast z kilku kadrow -> jedna ramka (zostaje najpewniejsza).
+
+    Argumenty:
+        ramki    - lista (x0, y0, x1, y1, pewnosc) na mozaice
+        prog_iou - od tego IoU dwie ramki to ten sam chwast, np. 0.3
+
+    Zwraca:
+        lista ramek bez powtorzen
+
+    Uzywana w:
+        app.py zakladka 4
+    """
     zostaja = []
     for r in sorted(ramki, key=lambda r: -r[4]):
-        if all(iou(r, z) < prog_iou for z in zostaja):
+        if all(iou_ramek(r, z) < prog_iou for z in zostaja):
             zostaja.append(r)
     return zostaja
 
 
-def _metryki(wynik):
-    t, p, f = wynik
-    return {"trafione": t, "pominiete": p, "falszywe": f,
-            "czulosc": round(t / (t + p), 4) if t + p else 0.0,
-            "precyzja": round(t / (t + f), 4) if t + f else 0.0}
-
-
-def lot_z_detekcja(zrodlo, prawda_zrodla, detektor, ustawienia, katalog, prog=0.15, prog_min=0.05,
-                   kafelek=None, na_kadr=None):
-    """Caly symulowany lot. Zwraca slownik z mozaika, ramkami i porownaniem z prawda.
-
-    prawda_zrodla: prawdziwe ramki na zrodle (pusta lista = bez porownania).
-    kafelek: bok kafelka w px kadru (kamera drona) - None = caly kadr naraz.
-    na_kadr(i, n, img, oznaczony, opis, laczenie, suma): wywolywane po kazdym
-    kadrze (podglad w interfejsie). Bledy symulatora (za male pole) to ValueError.
-    """
-    prawda_lotu = rozloz(zrodlo, katalog, ustawienia)
-    kadry = prawda_lotu["kadry"]
-    pliki = [Path(katalog) / "images" / k["plik"] for k in kadry]
-    det = TiledDetector(detektor, kafelek=kafelek, zakladka=0.15) if kafelek else detektor
-    # przy wielu kadrach porownujemy tylko sasiadow: ta sama i sasiednia linia trasy
-    na_linii = max(sum(1 for k in kadry if k["linia"] == l) for l in {k["linia"] for k in kadry})
-    skl = GlobalStitcher(renderuj_co=10 ** 6, zakres_par=2 * na_linii + 2 if len(pliki) > 40 else 0)
-    jest_prawda = bool(prawda_zrodla)
-
-    wszystkie, wykrycia, prawdy, rozmiary = [], [], [], []
-    laczenie, suma = 0, [0, 0, 0]
-    for i, (p, info_k) in enumerate(zip(pliki, kadry), 1):
-        img = cv2.imread(str(p))
-        surowe = [(d.x0, d.y0, d.x1, d.y1, d.pewnosc) for d in det.wykryj(img) if d.pewnosc >= prog_min]
-        ramki = [r for r in surowe if r[4] >= prog]
-        gt = prawda_w_kadrze(prawda_zrodla, info_k, img.shape[1], kadr_wys=img.shape[0]) if jest_prawda else []
-        wszystkie.append(surowe)
-        wykrycia.append(ramki)
-        prawdy.append(gt)
-        rozmiary.append(img.shape[:2])
-        laczenie += len(ramki)
-        if jest_prawda:
-            t_, p_, f_ = porownaj(ramki, gt)
-            suma = [suma[0] + t_, suma[1] + p_, suma[2] + f_]
-            opis = f"trafione {t_} · pominięte {p_} · fałszywe {f_}"
-        else:
-            opis = f"Wykryte chwasty: {len(ramki)}"
-        skl.dodaj(p)
-        if na_kadr:
-            oznaczony = rysuj_ramki(img, gt, 2, ZIELONY) if jest_prawda else img.copy()
-            rysuj_ramki(oznaczony, ramki, 2, ROZOWY, kopia=False)
-            na_kadr(i, len(pliki), img, oznaczony, opis, laczenie, suma)
-
-    skl.zakoncz()
-    if skl.mozaika is None:
-        raise RuntimeError("Nie udało się złożyć mozaiki.")
-
-    def na_mozaike(lista, z_id=False):
-        out = []
-        for k, (p, ramki, rozm) in enumerate(zip(pliki, lista, rozmiary)):
-            for r in ramki:
-                x0, y0, x1, y1 = r[:4]
-                q = skl.na_mozaike(p, [[x0, y0], [x1, y0], [x1, y1], [x0, y1]], rozm)
-                if q is not None:
-                    (mx0, my0), (mx1, my1) = q.min(axis=0), q.max(axis=0)
-                    c = r[4] if len(r) > 4 else 1.0
-                    out.append((mx0, my0, mx1, my1, c, k) if z_id else (mx0, my0, mx1, my1, c))
-        return out
-
-    # obrys kazdego kadru na mozaice - ile kadrow widzialo dane miejsce
-    wielokaty = {}
-    for k, (p, (h, w)) in enumerate(zip(pliki, rozmiary)):
-        q = skl.na_mozaike(p, [[0, 0], [w, 0], [w, h], [0, h]], (h, w))
-        if q is not None:
-            wielokaty[k] = q
-    unikalne = scal_ramki(na_mozaike(wykrycia))
-    surowe_m = na_mozaike(wszystkie, z_id=True)
-    fuzja = polacz(surowe_m, wielokaty, prog=prog)
-    fuzja_glos = polacz(surowe_m, wielokaty, prog=prog, glosowanie=True)
-    niski_glos = polacz(surowe_m, wielokaty, prog=prog, glosowanie=True, prog_niski=prog_min)
-    prawdziwe = scal_ramki(na_mozaike(prawdy)) if jest_prawda else None
-
-    wynik = {"mozaika": skl.mozaika, "wykryte": unikalne, "wykryte_fuzja": fuzja,
-             "wykryte_fuzja_glos": fuzja_glos, "wykryte_niski_glos": niski_glos, "prawdziwe": prawdziwe,
-             "kadrow": len(pliki), "w_mozaice": len(skl.S or {}), "wykryc": laczenie,
-             "unikalnych": len(unikalne), "wielokaty": wielokaty, "porownanie": None}
-    if jest_prawda:
-        wynik["porownanie"] = porownaj(unikalne, prawdziwe)
-        wynik["porownanie_fuzja"] = porownaj(fuzja, prawdziwe)
-        wynik["porownanie_fuzja_glos"] = porownaj(fuzja_glos, prawdziwe)
-        wynik["porownanie_niski_glos"] = porownaj(niski_glos, prawdziwe)
-        wynik["metryki"] = {"scalanie": _metryki(wynik["porownanie"]),
-                            "laczenie_widokow": _metryki(wynik["porownanie_fuzja"]),
-                            "laczenie_z_glosowaniem": _metryki(wynik["porownanie_fuzja_glos"]),
-                            "niski_prog_z_glosowaniem": _metryki(wynik["porownanie_niski_glos"])}
-    return wynik

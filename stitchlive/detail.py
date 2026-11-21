@@ -1,4 +1,4 @@
-"""Skladacz przyrostowy na cv2.detail. tez mniej wazny jak basic do porownania
+"""Skladacz przyrostowy na cv2.detail.
 
 Model ruchu
 -----------
@@ -21,6 +21,10 @@ rozlozony na osobne bloki, zeby dalo sie go uzywac przyrostowo.
 Pipeline:
     cechy -> dopasowanie par -> estymacja kamer -> dostrojenie wiazki
           -> wyrownanie ekspozycji -> szwy -> mieszanie
+
+Metoda do porownania (app.py zakladka 3, cli -m detail). Domyslna jest
+GlobalStitcher (global_stitcher.py) - przy obroconych kadrach estymacja
+cv2.detail daje rozmyta mozaike, a globalne wyrownanie nie.
 """
 
 import logging
@@ -41,6 +45,9 @@ class DetailStitcher:
     okno>0  tylko ostatnie N zdjec. Czas dodania jest w przyblizeniu staly,
             ale wynik pokrywa jedynie biezacy fragment trasy - przydatne
             jako podglad na zywo dla operatora, nie jako produkt koncowy.
+
+    Uzywana w:
+        cli.py zbuduj_skladacz() (-m detail), app.py zakladka 3
     """
 
     # Parametry:
@@ -54,6 +61,12 @@ class DetailStitcher:
                  match_conf=0.3, detektor="ORB", model="affine",
                  wyrownaj_ekspozycje=True, szwy=False, renderuj_co=1,
                  min_cech=40, zakres_par=0):
+        """Ustawienia skladacza; detektor cech tworzony raz.
+
+        Argumenty (opis tez w komentarzu nad metoda):
+            okno, work_megapix, conf_thresh, match_conf, detektor ("ORB"/"SIFT"), model ("affine"),
+            wyrownaj_ekspozycje, szwy, renderuj_co, min_cech, zakres_par
+        """
         self.okno = okno
         self.work_megapix = work_megapix
         self.conf_thresh = conf_thresh
@@ -82,28 +95,40 @@ class DetailStitcher:
     # Trzy ponizsze metody dobieraja bloki pipeline'u OpenCV do modelu ruchu.
     # Model afiniczny = to samo, co cv2.Stitcher w trybie SCANS.
     def _matcher(self):
+        """Dopasowywacz par OpenCV: afiniczny (dron) albo zwykly (panorama)."""
         if self.model == "affine":
             return cv2.detail_AffineBestOf2NearestMatcher(False, False,
                                                           self.match_conf)
         return cv2.detail_BestOf2NearestMatcher(False, self.match_conf)
 
     def _estymator(self):
+        """Estymator polozen zdjec: afiniczny (dron) albo z homografii (panorama)."""
         if self.model == "affine":
             return cv2.detail_AffineBasedEstimator()
         return cv2.detail_HomographyBasedEstimator()
 
     def _dostrajacz(self):
+        """Dostrojenie wiazki: AffinePartial (dron) albo Ray (panorama)."""
         if self.model == "affine":
             return cv2.detail_BundleAdjusterAffinePartial()
         return cv2.detail_BundleAdjusterRay()
 
     @property
     def _warper_typ(self):
+        """Typ przeksztalcenia obrazow: "affine" (dron) albo "plane" (panorama)."""
         return "affine" if self.model == "affine" else "plane"
 
     # ---------------- dodawanie ----------------
 
     def _przeskaluj(self, img):
+        """Zmniejsza zdjecie do work_megapix megapikseli (szybsze cechy i dopasowanie).
+
+        Argumenty:
+            img - obraz BGR
+
+        Zwraca:
+            obraz roboczy (oryginal, gdy jest juz mniejszy)
+        """
         piksele = img.shape[0] * img.shape[1]
         skala = min(1.0, np.sqrt(self.work_megapix * 1e6 / piksele))
         if skala < 1.0:
@@ -112,6 +137,18 @@ class DetailStitcher:
         return img
 
     def dodaj(self, sciezka):
+        """Dodaje zdjecie: cechy (raz), zapamietanie, co renderuj_co zdjec zlozenie mozaiki.
+
+        Argumenty:
+            sciezka - plik zdjecia
+
+        Zwraca:
+            True, gdy mozaika zostala wlasnie odswiezona; False w pozostalych przypadkach
+            (za malo zdjec, nie ta kolej, kadr bez tekstury, nieudane zlozenie)
+
+        Uzywana w:
+            cli.py petla(), app.py zakladka 3
+        """
         img = cv2.imread(str(sciezka))
         if img is None:
             log.warning("Nie mozna wczytac: %s", sciezka)
@@ -170,6 +207,12 @@ class DetailStitcher:
         odlegle o najwyzej N w kolejnosci wykonania. N musi obejmowac
         sasiednia linie przelotu (~2x liczba zdjec w linii), inaczej
         linie nie zostana ze soba powiazane.
+
+        Argumenty:
+            numery - numery zdjec (kolejnosc wykonania)
+
+        Zwraca:
+            macierz 0/1 (n x n) albo None (bez ograniczen)
         """
         if not self.zakres_par:
             return None
@@ -177,6 +220,11 @@ class DetailStitcher:
         return (np.abs(g[:, None] - g[None, :]) <= self.zakres_par).astype(np.uint8)
 
     def _dopasuj(self, cechy, numery):
+        """Dopasowanie par zdjec (z maska zakres_par).
+
+        Zwraca:
+            lista MatchesInfo (kazda para) z polem confidence
+        """
         matcher = self._matcher()
         maska = self._maska(numery)
         # apply2 zwraca liste n*n obiektow MatchesInfo (kazda z kazda) z polem
@@ -186,6 +234,12 @@ class DetailStitcher:
         return pary
 
     def _zloz(self):
+        """Caly pipeline na biezacym zestawie zdjec: pary -> najwieksza grupa -> kamery
+        -> dostrojenie wiazki -> kontrola ogniskowych -> _renderuj().
+
+        Zwraca:
+            True, gdy powstala nowa mozaika (self.mozaika); False przy kazdym niepowodzeniu
+        """
         od = max(0, len(self.sciezki) - self.okno) if self.okno > 0 else 0
         cechy = list(self.cechy[od:])
         obrazy = [o for o in self.robocze[od:] if o is not None]
@@ -247,6 +301,16 @@ class DetailStitcher:
         return True
 
     def _renderuj(self, obrazy, kamery, ogniskowe):
+        """Przeksztalcenie zdjec, wyrownanie jasnosci, opcjonalne szwy, mieszanie wielopasmowe.
+
+        Argumenty:
+            obrazy    - obrazy robocze
+            kamery    - parametry kamer po dostrojeniu
+            ogniskowe - ogniskowe kamer (mediana = skala mozaiki)
+
+        Zwraca:
+            mozaika BGR uint8 albo None
+        """
         # skala wyjsciowej mozaiki - mediana 'ogniskowych' wszystkich kamer
         skala = float(np.median(ogniskowe))
         warper = cv2.PyRotationWarper(self._warper_typ, skala)
@@ -305,4 +369,5 @@ class DetailStitcher:
         return np.clip(wynik, 0, 255).astype(np.uint8)
 
     def raport_czasu(self):
+        """Czas kazdego zlozenia: [{"zdjec": n, "czas_s": t, "ok": bool}] - do raport.json."""
         return [{"zdjec": n, "czas_s": t, "ok": ok} for n, t, ok in self.historia]

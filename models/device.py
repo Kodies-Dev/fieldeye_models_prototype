@@ -7,6 +7,9 @@ najlepsze dostepne urzadzenie: CUDA -> MPS (Apple) -> CPU.
 Modul trzeba zaimportowac PRZED torch: ustawia PYTORCH_ENABLE_MPS_FALLBACK,
 dzieki ktoremu operacje nieobslugiwane przez MPS licza sie na procesorze,
 zamiast przerywac trening bledem.
+
+Uzywany w:
+    training.py, evaluation.py, cli.py (srodowisko), mission/detector.py (YoloDetector), app.py
 """
 
 import os
@@ -16,7 +19,21 @@ os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
 
 
 def wybierz(urzadzenie=None):
-    """None / "" / "auto" -> najlepsze dostepne. Inna wartosc przechodzi bez zmian."""
+    """Wybiera urzadzenie do treningu i detekcji: CUDA -> MPS (Apple) -> CPU.
+
+    Po co: ultralytics sam wybiera tylko karte NVIDIA - na Macu bez tego liczylby na procesorze.
+
+    Argumenty:
+        urzadzenie - None / "" / "auto" = wybierz najlepsze; inna wartosc (np. "cpu", "0")
+                     przechodzi bez zmian
+
+    Zwraca:
+        str: "0" (pierwsza karta NVIDIA), "mps" (Mac) albo "cpu"
+
+    Uzywana w:
+        training.py trenuj_etap(), evaluation.py (ocen, predykcje), opis() (ten plik),
+        mission/detector.py YoloDetector, app.py
+    """
     if urzadzenie not in (None, "", "auto"):
         return urzadzenie
     try:
@@ -32,7 +49,15 @@ def wybierz(urzadzenie=None):
 
 
 def opis():
-    """Co jest zainstalowane i co zostanie uzyte - do diagnozy srodowiska."""
+    """Co jest zainstalowane i co zostanie uzyte - do diagnozy srodowiska.
+
+    Zwraca:
+        dict, np. {"system": "Darwin arm64", "python": "3.14.0", "torch": "2.x", "cuda": False,
+                   "mps": True, "ultralytics": "8.x", "wybrane_urzadzenie": "mps", "mps_fallback": "1"}
+
+    Uzywana w:
+        models/cli.py cmd_srodowisko() - komenda "python -m models.cli srodowisko"
+    """
     info = {"system": f"{platform.system()} {platform.machine()}",
             "python": platform.python_version()}
     try:

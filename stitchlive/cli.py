@@ -1,4 +1,16 @@
-"""Petla glowna i interfejs wiersza polecen."""
+"""Petla glowna i interfejs wiersza polecen.
+
+    python -m stitchlive.cli batch  zdjecia/ -o wyniki          # caly folder naraz
+    python -m stitchlive.cli watch  naplyw/  -o wyniki          # na zywo, w trakcie lotu
+    python -m stitchlive.cli info   zdjecia/                    # ile zdjec, jaki rozmiar
+    python -m stitchlive.cli rozloz pole.jpg -o symulacja       # symulator: pole -> kadry
+    python -m stitchlive.cli ocen   mozaika.jpg pole.jpg --prawda symulacja/prawda.json
+    python -m stitchlive.cli demo                               # rozloz -> zloz -> ocen naraz
+
+Metody skladania (-m): global (domyslna), detail, basic.
+Przeplyw batch/watch: zrodlo (source.py, watek w tle) -> kolejka -> petla() -> skladacz.dodaj()
+-> mozaika_biezaca.jpg po kazdym odswiezeniu -> raport.json na koncu.
+"""
 
 import argparse
 import json
@@ -23,6 +35,17 @@ log = logging.getLogger("stitchlive")
 
 # Tworzy skladacz wybranej metody z parametrow wiersza polecen (--metoda).
 def zbuduj_skladacz(args):
+    """Tworzy skladacz wybranej metody z parametrow wiersza polecen (--metoda).
+
+    Argumenty:
+        args - opcje: metoda ("global" / "detail" / "basic") i jej ustawienia
+
+    Zwraca:
+        GlobalStitcher, DetailStitcher albo BasicStitcher
+
+    Uzywana w:
+        cmd_batch(), cmd_watch(), cmd_demo() (ten plik)
+    """
     if args.metoda == "basic":
         return BasicStitcher(downscale=args.downscale, tryb=args.tryb)
     if args.metoda == "global":
@@ -53,7 +76,24 @@ def zbuduj_skladacz(args):
 # Zrodlo (watek w tle) wrzuca sciezki do kolejki, a ta petla je pobiera
 # i przekazuje skladaczowi. Po kazdym udanym odswiezeniu zapisuje mozaike.
 def petla(kolejka, skladacz, outdir, zapisuj_kroki=False, timeout=None):
-    """Pobiera zdjecia z kolejki i aktualizuje mozaike."""
+    """Pobiera zdjecia z kolejki i aktualizuje mozaike.
+
+    Konczy sie na None w kolejce (batch) albo po timeout s bez nowych zdjec (watch).
+    Blad jednego zdjecia nie przerywa calosci.
+
+    Argumenty:
+        kolejka       - queue.Queue ze sciezkami (zrodlo w watku w tle)
+        skladacz      - z zbuduj_skladacz()
+        outdir        - folder wynikow
+        zapisuj_kroki - True = mozaika po kazdym zdjeciu (krok_0001.jpg, ...)
+        timeout       - sekundy bez nowych zdjec do konca albo None
+
+    Zwraca:
+        dict raportu (przetworzonych, czas, rozmiar mozaiki, historia czasow) - tez w raport.json
+
+    Uzywana w:
+        cmd_batch(), cmd_watch(), cmd_demo() (ten plik)
+    """
     outdir = Path(outdir)
     outdir.mkdir(parents=True, exist_ok=True)
     n = 0
@@ -120,7 +160,14 @@ def petla(kolejka, skladacz, outdir, zapisuj_kroki=False, timeout=None):
 # Ponizej funkcje cmd_* - po jednej na komende (batch, watch, info, rozloz,
 # ocen, demo). Wybiera je argparse na podstawie pierwszego argumentu.
 def cmd_batch(args):
-    """Tryb wsadowy - caly katalog naraz, bez symulacji czasu."""
+    """Tryb wsadowy - caly katalog naraz, bez symulacji czasu.
+
+    Argumenty:
+        args - opcje: katalog, output, opoznienie, limit, kroki + opcje skladacza
+
+    Zwraca:
+        0
+    """
     kolejka = queue.Queue()
     zrodlo = BatchSource(args.katalog, kolejka,
                            opoznienie_s=args.opoznienie, limit=args.limit)
@@ -131,7 +178,17 @@ def cmd_batch(args):
 
 
 def cmd_watch(args):
-    """Tryb obserwacji katalogu - praca w trakcie lotu."""
+    """Tryb obserwacji katalogu - praca w trakcie lotu.
+
+    Argumenty:
+        args - opcje: katalog, output, interwal, od_poczatku, timeout, kroki + opcje skladacza
+
+    Zwraca:
+        0 (koniec: Ctrl+C albo --timeout)
+
+    Uzywana w:
+        make demo-live (razem z scripts/simulate_flight.sh)
+    """
     kolejka = queue.Queue()
     zrodlo = FolderSource(args.katalog, kolejka,
                            interwal_s=args.interwal,
@@ -150,7 +207,11 @@ def cmd_watch(args):
 
 
 def cmd_info(args):
-    """Podstawowe informacje o zbiorze zdjec."""
+    """Podstawowe informacje o zbiorze zdjec.
+
+    Zwraca:
+        0; 1, gdy brak obrazow
+    """
     sciezki = lista_obrazow(args.katalog)
     if not sciezki:
         print("Brak obrazow w katalogu")
@@ -167,7 +228,17 @@ def cmd_info(args):
 
 # obraz zrodlowy dla symulatora: podany plik albo wygenerowane sztuczne pole
 def _zrodlo(args):
-    """Obraz podany przez uzytkownika albo wygenerowane sztuczne pole."""
+    """Obraz podany przez uzytkownika albo wygenerowane sztuczne pole.
+
+    Argumenty:
+        args - opcje: obraz (albo brak), max_wymiar, pole_w, pole_h, seed
+
+    Zwraca:
+        obraz BGR
+
+    Uzywana w:
+        cmd_rozloz(), cmd_demo() (ten plik)
+    """
     if args.obraz:
         return wczytaj_zrodlo(args.obraz, args.max_wymiar)
     log.info("Brak obrazu - generuje sztuczne pole %dx%d", args.pole_w, args.pole_h)
@@ -176,6 +247,17 @@ def _zrodlo(args):
 
 # argumenty wiersza polecen -> obiekt Ustawienia symulatora
 def _ustawienia(args):
+    """Opcje z terminala -> SimSettings symulatora; z --wysokosc kadr liczony z optyki kamery.
+
+    Argumenty:
+        args - opcje symulatora (kadr, overlap, zaklocenia, wysokosc, ...)
+
+    Zwraca:
+        SimSettings
+
+    Uzywana w:
+        cmd_rozloz(), cmd_demo() (ten plik)
+    """
     kadr, kadr_wys, rozm = args.kadr, args.kadr_wys, 0.0
     if args.wysokosc:
         # kamera drona: kadr = tyle pola, ile widzi kamera z tej wysokosci, w px zrodla
@@ -195,7 +277,11 @@ def _ustawienia(args):
 
 
 def cmd_rozloz(args):
-    """Tnie jedno zdjecie na kadry - symulacja robienia zdjec przez drona."""
+    """Tnie jedno zdjecie na kadry - symulacja robienia zdjec przez drona.
+
+    Zwraca:
+        0; w folderze -o: images/, podglad_trasy.jpg, prawda.json
+    """
     zrodlo = _zrodlo(args)
     prawda = rozloz(zrodlo, args.output, _ustawienia(args),
                     na_zywo=args.na_zywo, odstep=args.odstep)
@@ -209,7 +295,11 @@ def cmd_rozloz(args):
 
 
 def cmd_ocen(args):
-    """Porownuje zlozona mozaike z oryginalem."""
+    """Porownuje zlozona mozaike z oryginalem.
+
+    Zwraca:
+        0 = ocena udana, 1 = nieudana; wypisuje pary, skale, pokrycie, blad, PSNR, werdykt
+    """
     moz = cv2.imread(str(args.mozaika))
     ory = cv2.imread(str(args.oryginal))
     if moz is None or ory is None:
@@ -222,6 +312,11 @@ def cmd_ocen(args):
 
 
 def _drukuj_ocene(w):
+    """Wypisuje wynik evaluation.ocen() w czytelnych liniach.
+
+    Argumenty:
+        w - slownik z ocen()
+    """
     print()
     if not w.get("ok"):
         print(f"Ocena nieudana: {w.get('powod')}")
@@ -237,7 +332,14 @@ def _drukuj_ocene(w):
 # Demo = trzy kroki naraz: rozloz -> zloz -> ocen. Najszybszy sposob,
 # zeby sprawdzic caly program jednym poleceniem.
 def cmd_demo(args):
-    """Rozklad -> skladanie -> ocena, jednym poleceniem."""
+    """Rozklad -> skladanie -> ocena, jednym poleceniem.
+
+    Zwraca:
+        0 = ocena udana, 1 = nieudana; foldery symulacja/, mozaika/, ocena/ w -o
+
+    Uzywana w:
+        make demo (przez batch), szybkie sprawdzenie calego programu
+    """
     out = Path(args.output)
     zrodlo = _zrodlo(args)
     print("== 1/3 rozklad zdjecia na kadry ==")
@@ -265,6 +367,14 @@ def cmd_demo(args):
 
 
 def build_parser():
+    """Opis komend i opcji (argparse): batch, watch, info, rozloz, ocen, demo.
+
+    Zwraca:
+        argparse.ArgumentParser
+
+    Uzywana w:
+        main() (ten plik)
+    """
     ap = argparse.ArgumentParser(
         prog="stitchlive",
         description="Skladanie zdjec z drona w czasie rzeczywistym (OpenCV)")
@@ -274,11 +384,13 @@ def build_parser():
 
     # opcje skladania - wspolne dla batch, watch i demo
     def wspolne(p):
+        """Katalog, -o i opcje skladania - dla batch i watch."""
         p.add_argument("katalog", help="katalog ze zdjeciami")
         p.add_argument("-o", "--output", default="wyniki")
         wspolne_bez_katalogu(p)
 
     def wspolne_bez_katalogu(p):
+        """Opcje skladania (metoda, detektor, megapix, szwy, ...) - batch, watch i demo."""
         p.add_argument("-m", "--metoda", default="global",
                        choices=["global", "detail", "basic"],
                        help="global = pary OpenCV + globalne wyrownanie (domyslna, "
@@ -342,6 +454,7 @@ def build_parser():
 
     # opcje symulatora lotu - wspolne dla rozloz i demo
     def ciecie(p):
+        """Opcje symulatora (obraz, kadr, wysokosc, pokrycie, zaklocenia, seed) - rozloz i demo."""
         p.add_argument("obraz", nargs="?", help="duze zdjecie zrodlowe; brak = sztuczne pole")
         p.add_argument("--max-wymiar", type=int, default=0,
                        help="zmniejsz zrodlo, jesli dluzszy bok jest wiekszy")
@@ -401,6 +514,14 @@ def build_parser():
 
 
 def main(argv=None):
+    """Uruchamia komende: parsuje opcje, ustawia logi i wola args.func(args).
+
+    Zwraca:
+        kod wyjscia komendy; 1 przy bledzie (z -v pelny traceback)
+
+    Uzywana w:
+        python -m stitchlive.cli ... (if __name__ == "__main__"), Makefile (demo, demo-live)
+    """
     args = build_parser().parse_args(argv)
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,

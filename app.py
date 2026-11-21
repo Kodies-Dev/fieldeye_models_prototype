@@ -27,17 +27,16 @@ import numpy as np
 import streamlit as st
 from PIL import Image
 
-from stitchlive.flight_sim import SimSettings, macierz_kadru, rozloz
-from stitchlive.camera import ARDUCAM_64MP_16MP, GSD_WEEDSGALORE_MM, KAMERY, opis_lotu
+from stitchlive.flight_sim import SimSettings, rozloz
+from stitchlive.camera import GSD_WEEDSGALORE_MM, KAMERY, opis_lotu
 from stitchlive.field import zbuduj_pole
 from stitchlive.evaluation import ocen
 from stitchlive.global_stitcher import GlobalStitcher
 from stitchlive.detail import DetailStitcher
 from stitchlive.basic import BasicStitcher
-from models.device import wybierz
 from mission.detector import DummyDetector, HailoDetector, TiledDetector, YoloDetector
-from models.evaluation import pr_przy_progach
-from models.plan import katalog_etykiet
+from mission.sim_flight import (ROZOWY, ZIELONY, kafelki_wedlug_dni, pole_z_kafelkow, porownaj,
+                                prawda_w_kadrze, rysuj_ramki, scal_ramki)
 
 
 st.set_page_config(page_title="FIELDEYE - symulator lotu", layout="wide")
@@ -82,7 +81,6 @@ def katalog_roboczy():
     if "workdir" not in st.session_state:
         st.session_state.workdir = Path(tempfile.mkdtemp(prefix="fieldeye_"))#koncowka random
     return st.session_state.workdir
-
 
 
 # przesuwanie wszystkich suwakow gdy wybrierzemy zestaw zaklocen presety
@@ -695,146 +693,6 @@ def detektor_lotu(model, prog, wejscie):
                               "plam zieleni i NIE jest detektorem chwastów.")
 
 
-def kafelki_wedlug_dni(katalog):
-    """Grupuje kafelki WeedsGalore wedlug dnia lotu (data w nazwie pliku).
-
-    Po co: WeedsGalore to jedno pole sfotografowane kilka razy - kafelki z roznych
-    dni pokazuja te same miejsca. Lot musi byc nad jednym dniem, inaczej to samo
-    miejsce wystapi w siatce dwa razy i mozaika sie nie zlozy.
-    Data szukana wyrazeniem regularnym RRRR-MM-DD, np.
-    weedsgalore__2023-05-25__2023-05-25_0780.jpg -> "2023-05-25".
-
-    Argumenty:
-        katalog - folder z kafelkami, np. "zbior_lotnicze/dataset/images/test"
-
-    Zwraca:
-        {dzien: [pliki]} - pliki posortowane po nazwie; bez daty w nazwie -> "bez daty"
-        np. {"2023-05-25": [14 plikow], "2023-05-30": [...], ...}
-
-    Uzywana w:
-        zakladka 4 - lista dni w selectboxie "Dzien lotu"
-    """
-    import re
-    dni = {}
-    for p in sorted(Path(katalog).glob("*")):
-        if p.suffix.lower() in (".jpg", ".jpeg", ".png"):
-            m = re.search(r"\d{4}-\d{2}-\d{2}", p.name)
-            dni.setdefault(m.group(0) if m else "bez daty", []).append(p)
-    return dni
-
-
-def pole_z_kafelkow(pliki, ile=25, z_etykietami=False):
-    """Skleja kafelki w prostokatna siatke - zrodlo do symulacji lotu nad prawdziwymi chwastami.
-
-    Po co: zbiory treningowe to osobne kafelki, a symulator potrzebuje jednego
-    duzego zdjecia pola. Kafelki musza pochodzic z JEDNEGO dnia lotu (patrz
-    kafelki_wedlug_dni). To nie jest ciagle pole - na stykach kafelkow sa
-    skoki - ale chwasty sa prawdziwe i maja prawdziwe etykiety.
-    Jak sklada: pierwsze `ile` kafelkow, kolumn = ceil(sqrt(n)), tylko pelne wiersze,
-    wszystkie przeskalowane do rozmiaru pierwszego; np. 25 kafelkow -> siatka 5 x 5.
-    Z etykietami: ramki z plikow YOLO (cx, cy, w, h - ulamki) przeliczone na piksele
-    i przesuniete o polozenie kafelka w siatce.
-
-    Argumenty:
-        pliki       - lista sciezek kafelkow (z jednego dnia)
-        ile         - najwiecej kafelkow do uzycia (dom. 25)
-        z_etykietami - True: zwroc tez prawdziwe ramki chwastow
-
-    Zwraca:
-        obraz BGR siatki; z z_etykietami=True: (obraz, [(x0, y0, x1, y1), ...]) w px siatki;
-        None - gdy kafelkow mniej niz 4
-
-    Uzywana w:
-        zakladka 4 - pole "Kafelki WeedsGalore (test)" po kliknieciu "Start lotu"
-    """
-    pliki = list(pliki)[:ile]
-    if len(pliki) < 4:
-        return None
-    kol = int(np.ceil(np.sqrt(len(pliki))))
-    wier = len(pliki) // kol                      # tylko pelne wiersze
-    obrazy = [cv2.imread(str(p)) for p in pliki[:wier * kol]]
-    h, w = obrazy[0].shape[:2]
-    obrazy = [cv2.resize(o, (w, h)) for o in obrazy]
-    pole = np.vstack([np.hstack(obrazy[r * kol:(r + 1) * kol]) for r in range(wier)])
-    if not z_etykietami:
-        return pole
-    # prawdziwe ramki z plikow YOLO obok kafelkow, przeniesione na sklejke
-    prawda = []
-    for i, p in enumerate(pliki[:wier * kol]):
-        et = katalog_etykiet(Path(p).parent) / (Path(p).stem + ".txt")
-        if not et.exists():
-            continue
-        ox, oy = (i % kol) * w, (i // kol) * h
-        for linia in et.read_text().split("\n"):
-            cz = linia.split()
-            if len(cz) >= 5:
-                cx, cy, bw, bh = (float(v) for v in cz[1:5])
-                prawda.append((ox + (cx - bw / 2) * w, oy + (cy - bh / 2) * h,
-                               ox + (cx + bw / 2) * w, oy + (cy + bh / 2) * h))
-    return pole, prawda
-
-
-def prawda_w_kadrze(prawda, kadr_info, kadr, min_widocznosc=0.4, kadr_wys=None):
-    """Przelicza prawdziwe ramki chwastow z pola na wspolrzedne jednego kadru.
-
-    Po co: zeby ocenic detekcje na kadrze, trzeba wiedziec, gdzie na NIM sa
-    prawdziwe chwasty. Macierz z macierz_kadru() przenosi piksel kadru na pole,
-    wiec w druga strone idziemy jej odwrotnoscia (cv2.invertAffineTransform).
-    Ramka obrocona razem z kadrem -> jej obwiednia -> przyciecie do krawedzi kadru.
-    Ramka zostaje, gdy w kadrze widac co najmniej min_widocznosc jej powierzchni
-    (tak samo jak przy kafelkowaniu zbioru).
-
-    Argumenty:
-        prawda         - prawdziwe ramki na polu: [(x0, y0, x1, y1), ...] w px pola
-        kadr_info      - wpis kadru z prawda.json (srodek, kat_st, zasieg_px, kadr_px)
-        kadr           - szerokosc kadru (px)
-        min_widocznosc - jaka czesc ramki musi byc w kadrze (dom. 0.4 = 40%)
-        kadr_wys       - wysokosc kadru (px); None = z kadr_info albo kwadrat
-
-    Zwraca:
-        lista ramek (x0, y0, x1, y1) w px kadru
-
-    Uzywana w:
-        zakladka 4 - dla kazdego kadru: zielone ramki i porownanie z wykrytymi
-    """
-    kh = kadr_wys or (kadr_info.get("kadr_px") or [kadr, kadr])[1]
-    M = macierz_kadru(*kadr_info["srodek"], kadr_info["kat_st"], kadr_info["zasieg_px"], kadr, kh)
-    Mi = cv2.invertAffineTransform(M)
-    out = []
-    for x0, y0, x1, y1 in prawda:
-        q = np.array([[x0, y0, 1], [x1, y0, 1], [x1, y1, 1], [x0, y1, 1]], float) @ Mi.T
-        (a0, b0), (a1, b1) = q.min(axis=0), q.max(axis=0)
-        pole = (a1 - a0) * (b1 - b0)
-        c0, d0, c1, d1 = max(a0, 0), max(b0, 0), min(a1, kadr), min(b1, kh)
-        if c1 > c0 and d1 > d0 and pole > 0 and (c1 - c0) * (d1 - d0) >= min_widocznosc * pole:
-            out.append((c0, d0, c1, d1))
-    return out
-
-
-def porownaj(wykryte, prawdziwe, iou=0.5):
-    """Porownuje wykryte ramki z prawdziwymi na jednym obrazie.
-
-    Po co: zeby policzyc, ile chwastow model znalazl, ile przegapil i ile
-    falszywych alarmow dal. Para wykryta-prawdziwa liczy sie jako trafienie, gdy
-    ramki nachodza na siebie w co najmniej iou (IoU = czesc wspolna / suma).
-    Liczy to pr_przy_progach z models/evaluation.py (ten sam kod co ocena modelu).
-
-    Argumenty:
-        wykryte   - [(x0, y0, x1, y1, pewnosc), ...]
-        prawdziwe - [(x0, y0, x1, y1), ...]
-        iou       - prog nakladania (dom. 0.5)
-
-    Zwraca:
-        (trafione, pominiete, falszywe) - trzy liczby calkowite
-
-    Uzywana w:
-        zakladka 4 - dla kazdego kadru (opis pod obrazem) i na koncu dla mozaiki
-    """
-    w = pr_przy_progach({"x": [(0, r[4], *r[:4]) for r in wykryte]},
-                        {"x": [(0, *r[:4]) for r in prawdziwe]}, [0.0], iou)[0]
-    return w["trafione"], w["pominiete"], w["falszywe"]
-
-
 def gif_lotu(klatki, mozaika, szer=640, ms=400):
     """Sklada animacje lotu: kadry po kolei, na koncu mozaika z chwastami.
 
@@ -872,67 +730,6 @@ def gif_lotu(klatki, mozaika, szer=640, ms=400):
     bufor = io.BytesIO()
     obrazy[0].save(bufor, format="GIF", save_all=True, append_images=obrazy[1:], duration=czasy, loop=0)
     return bufor.getvalue()
-
-
-ZIELONY, ROZOWY = (60, 200, 60), (255, 0, 255)
-
-
-def rysuj_ramki(img, ramki, grubosc=2, kolor=ROZOWY, kopia=True):
-    """Rysuje prostokaty ramek na obrazie.
-
-    Po co: wspolne rysowanie ramek w zakladce 4 - wykryte chwasty na rozowo,
-    prawdziwe na zielono (kolory w BGR: ROZOWY (255, 0, 255), ZIELONY (60, 200, 60)).
-
-    Argumenty:
-        img     - obraz BGR
-        ramki   - [(x0, y0, x1, y1, ...), ...]; dalsze pola (np. pewnosc) sa pomijane
-        grubosc - grubosc linii w px (dom. 2)
-        kolor   - kolor w BGR (dom. ROZOWY)
-        kopia   - True: rysuj na kopii (oryginal bez zmian); False: rysuj na img
-                  (szybciej, gdy kilka warstw ramek na jednym obrazie)
-
-    Zwraca:
-        obraz z ramkami (kopia albo ten sam img)
-
-    Uzywana w:
-        zakladka 4 - kadry podczas lotu, mozaika (widok "Wykryte / Prawdziwe / Obie"), GIF
-    """
-    out = img.copy() if kopia else img
-    for x0, y0, x1, y1, *_ in ramki:
-        cv2.rectangle(out, (int(x0), int(y0)), (int(x1), int(y1)), kolor, grubosc)
-    return out
-
-
-def scal_ramki(ramki, prog_iou=0.3):
-    """Scala ramki tego samego chwastu z kilku kadrow w jedna.
-
-    Po co: kadry na siebie zachodza, wiec ten sam chwast jest wykrywany na 2-6
-    kadrach; po przeniesieniu na mozaike jego ramki leza prawie w tym samym miejscu.
-    Zachlanne tlumienie (NMS): ramki od najpewniejszej, ramka zostaje, gdy z kazda
-    juz zostawiona nachodzi mniej niz prog_iou. Przy gesto rosnacych chwastach
-    moze polaczyc dwa sasiednie w jeden.
-
-    Argumenty:
-        ramki    - [(x0, y0, x1, y1, pewnosc), ...] na mozaice
-        prog_iou - powyzej tego nakladania ramki uznane za ten sam chwast (dom. 0.3)
-
-    Zwraca:
-        lista ramek, ktore zostaly (ten sam format), od najpewniejszej
-
-    Uzywana w:
-        zakladka 4 - na_mozaike_wszystkie(): wykryte i prawdziwe ramki na mozaice
-    """
-    def iou(a, b):
-        x0, y0, x1, y1 = max(a[0], b[0]), max(a[1], b[1]), min(a[2], b[2]), min(a[3], b[3])
-        if x1 <= x0 or y1 <= y0:
-            return 0.0
-        wsp = (x1 - x0) * (y1 - y0)
-        return wsp / ((a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - wsp)
-    zostaja = []
-    for r in sorted(ramki, key=lambda r: -r[4]):
-        if all(iou(r, z) < prog_iou for z in zostaja):
-            zostaja.append(r)
-    return zostaja
 
 
 with tab4:

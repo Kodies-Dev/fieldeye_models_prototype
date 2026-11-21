@@ -85,35 +85,6 @@ def weedsgalore(cel, rng):
     (cel / "splits" / "test.txt").write_text("\n".join(ids[5:]) + "\n")
 
 
-def cofly(cel, rng):
-    """Maski w labels_1d i labels; czesc zdjec BEZ chwastow (przyklady negatywne)."""
-    cel = Path(cel)
-    for sub in ("images", "labels", "labels_1d"):
-        (cel / sub).mkdir(parents=True, exist_ok=True)
-    kolory = {1: (0, 0, 255), 2: (255, 0, 0), 3: (0, 255, 255)}   # BGR
-    for i in range(1, 9):
-        nazwa = (f"ID_{i:05d}_UAV_[Lat={39.54 + i*1e-4:.6f},Lon={22.64 + i*1e-4:.6f},"
-                 f"Alt={rng.uniform(4.6, 5.2):.3f}].png" if i % 2 else f"ID_{i:05d}.png")
-        h, w = 360, 640
-        img = _tlo(h, w, rng)
-        for y in range(60, h, 120):
-            for x in range(30, w, 60):
-                _roslina(img, None, x, y, 16, (60, 140, 70), 0, rng)
-        if i > 5:                                     # bez maski = brak chwastow
-            cv2.imwrite(str(cel / "images" / nazwa), np.clip(img, 0, 255).astype(np.uint8))
-            continue
-        m = np.zeros((h, w), np.uint8)
-        for _ in range(int(rng.integers(2, 6))):
-            _roslina(img, m, rng.uniform(20, w - 20), rng.uniform(20, h - 20),
-                     rng.uniform(10, 22), (70, 190, 120), int(rng.choice([1, 2, 3])), rng)
-        cv2.imwrite(str(cel / "images" / nazwa), np.clip(img, 0, 255).astype(np.uint8))
-        cv2.imwrite(str(cel / "labels_1d" / nazwa), m)
-        kol = np.zeros((h, w, 3), np.uint8)
-        for v, c in kolory.items():
-            kol[m == v] = c
-        cv2.imwrite(str(cel / "labels" / nazwa), kol)
-
-
 def sudars(cel, rng):
     """Pascal VOC, skroty gatunkow, rozne rozdzielczosci, przewaga chwastow."""
     cel = Path(cel)
@@ -136,27 +107,6 @@ def sudars(cel, rng):
         plik = f"ave-{i:04d}.jpg"
         cv2.imwrite(str(cel / "raw images" / plik), np.clip(img, 0, 255).astype(np.uint8))
         _xml(cel / "annotations" / f"ave-{i:04d}.xml", plik, w, h, ob)
-
-
-def weedmaize(cel, rng):
-    """Pascal VOC z kodami EPPO i faza wzrostu; gotowy podzial w katalogach."""
-    cel = Path(cel)
-    etyk = ["ZEAMX_V1", "ZEAMX_V3", "SOLNI_Vc", "CYPRO_min", "ECHCG_Vt"]
-    for split, n in (("train_set", 6), ("validation_set", 2), ("test_set", 2)):
-        (cel / split).mkdir(parents=True, exist_ok=True)
-        for i in range(n):
-            w, h = 1000, 750
-            img = _tlo(h, w, rng)
-            ob = []
-            for _ in range(int(rng.integers(6, 14))):
-                nazwa = str(rng.choice(etyk))
-                r = rng.uniform(18, 50) if nazwa.startswith("ZEAMX") else rng.uniform(8, 28)
-                cx, cy = rng.uniform(r, w - r), rng.uniform(r, h - r)
-                _roslina(img, None, cx, cy, r, (60, 160, 80), 0, rng)
-                ob.append((nazwa, (int(cx - r), int(cy - r), int(cx + r), int(cy + r))))
-            plik = f"{split[:3]}_{i:03d}.jpg"
-            cv2.imwrite(str(cel / split / plik), np.clip(img, 0, 255).astype(np.uint8))
-            _xml(cel / split / f"{split[:3]}_{i:03d}.xml", plik, w, h, ob)
 
 
 def wlasne(cel, rng, kopia_z=None):
@@ -191,15 +141,11 @@ def utworz(katalog="dane_przykladowe", seed=0, z_duplikatem=True):
     rng = np.random.default_rng(seed)
     sciezki = {
         "weedsgalore": katalog / "weedsgalore-dataset",
-        "cofly": katalog / "CoFly-WeedDB",
         "sudars": katalog / "sudars" / "dataset",
-        "weedmaize": katalog / "weedmaize",
         "wlasne": katalog / "wlasne",
     }
     weedsgalore(sciezki["weedsgalore"], rng)
-    cofly(sciezki["cofly"], rng)
     sudars(sciezki["sudars"], rng)
-    weedmaize(sciezki["weedmaize"], rng)
     dubel = (sciezki["sudars"] / "raw images" / "ave-0000.jpg") if z_duplikatem else None
     wlasne(sciezki["wlasne"], rng, dubel)
     return {k: str(v) for k, v in sciezki.items()}

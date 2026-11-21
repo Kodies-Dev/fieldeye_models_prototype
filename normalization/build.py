@@ -1,15 +1,28 @@
 """Orkiestracja: zbiory zrodlowe -> gotowy zbior treningowy YOLO.
 
-    python -m normalization.build --weedsgalore dane/weedsgalore-dataset \\
-        --sudars dane/sudars/dataset -o zbior --tryb-klas binarnie
+Po co:
+    Kazdy zbior ma inny format (WeedsGalore: kanaly + maski, Sudars: XML, EWIS1: XML + maski).
+    Ten plik przepuszcza je przez te same kroki i zapisuje jeden wspolny format YOLO,
+    zeby mozna je bylo razem trenowac. Uzywany w kroku 1 scripts/final_model.sh.
 
-Kolejnosc krokow ma znaczenie:
+Jak dziala (kolejnosc ma znaczenie):
+    adaptery -> deduplikacja -> tryb klas -> podzial -> (skala) -> kafelkowanie -> eksport
 
-  adaptery -> deduplikacja -> mapowanie klas -> podzial -> kafelkowanie -> eksport
+    Deduplikacja PRZED podzialem, bo inaczej duplikat moze trafic do treningu i do testu.
+    Kafelkowanie PO podziale, bo kafelki dziedzicza split ze zdjecia - inaczej kafelki
+    tego samego zdjecia rozjechalyby sie po czesciach.
 
-Deduplikacja PRZED podzialem, bo inaczej duplikat moze trafic do treningu
-i do testu. Kafelkowanie PO podziale, bo kafelki dziedzicza split ze zdjecia -
-inaczej kafelki tego samego zdjecia rozjechalyby sie po czesciach.
+Wynik (folder -o):
+    dataset/                        - zbior YOLO: data.yaml, images/, labels/ (train/val/test)
+    build_info.json                 - parametry, statystyki, nierozpoznane etykiety, kontrola podzialu
+    manifest.jsonl                  - kazdy kafelek z ramkami (Record), jeden na linie
+    manifest_przed_kafelkami.jsonl  - to samo dla calych zdjec
+    duplikaty.json, podglad/        - odrzucone duplikaty, zdjecia z narysowanymi ramkami
+
+    python -m normalization.build --weedsgalore dane/weedsgalore-dataset -o zbior_lotnicze --tryb-klas chwasty
+    python -m normalization.build --sudars dane/sudars/dataset -o zbior_naziemne --tryb-klas chwasty
+    python -m normalization.build --ewis1 dane/ewis1 -o zbior_ewis1_podzial --tryb-klas chwasty \\
+        --skala ewis1=0.47 --proporcje 1 0 0 --ewis1-test-dni 20220516
 """
 
 import argparse
@@ -21,7 +34,7 @@ from pathlib import Path
 from . import export as E
 from . import steps as K
 from . import manifest as M
-from .adapters import ADAPTERY
+from .adapters import ADAPTERY          # slownik nazwa zbioru -> funkcja adaptera, np. "ewis1" -> ewis1()
 from .taxonomy import Taxonomy
 
 log = logging.getLogger("normalization")
@@ -30,22 +43,53 @@ log = logging.getLogger("normalization")
 def zbuduj(zrodla, wyjscie, tryb_klas="binarnie", kafelek=896, zakladka=0.1,
            udzial_pustych=0.15, prog_dedup=5, proporcje=(0.70, 0.15, 0.15),
            splity_weedsgalore=None, taksonomia=None, kopiuj_obrazy=True,
-           tylko_wlasne_do_testu=False, oficjalne_splity=True, seed=0, skale=None, limity=None,
+           tylko_wlasne_do_testu=False, oficjalne_splity=True, seed=0, skale=None,
            opcje_adapterow=None):
-    """Caly potok. zrodla: {"weedsgalore": "sciezka", ...}"""
-    tax = Taxonomy(taksonomia)
+    """Caly potok: surowe zbiory -> zbior YOLO w folderze wyjscie.
+
+    Po co: jedno miejsce, ktore wykonuje wszystkie kroki normalizacji w dobrej kolejnosci.
+
+    Argumenty:
+        zrodla          - slownik nazwa_zbioru -> sciezka, np. {"ewis1": "dane/ewis1"}
+        wyjscie         - folder wyniku, np. "zbior_ewis1_podzial"
+        tryb_klas       - "binarnie" (chwast/uprawa), "chwasty" (sama klasa chwast) albo "gatunki"
+        kafelek         - bok kafelka w px, 0 = bez kafelkowania, np. 896
+        zakladka        - zakladka kafelkow 0-1, np. 0.1 (10%)
+        udzial_pustych  - ile kafelkow bez chwastow zostawic (przyklady negatywne), np. 0.15
+        prog_dedup      - prog podobienstwa zdjec dla deduplikacji, np. 5
+        proporcje       - (train, val, test) dla zdjec bez gotowego splitu, np. (1, 0, 0)
+        splity_weedsgalore - folder z plikami podzialu autorow WeedsGalore albo None
+        taksonomia      - wlasny taxonomy.yaml albo None (domyslny)
+        kopiuj_obrazy   - False = tylko etykiety i manifest (szybki test)
+        tylko_wlasne_do_testu - True = test tylko z danych wlasnych
+        oficjalne_splity - True = zachowaj podzial autorow zbioru (i dzien testowy EWIS1)
+        seed            - ziarno losowania (podzial, puste kafelki), np. 0
+        skale           - slownik zrodlo -> wspolczynnik, np. {"ewis1": 0.47}
+        opcje_adapterow - dodatkowe opcje adapterow, np. {"ewis1": {"test_dni": ["20220516"]}}
+
+    Zwraca:
+        dict - to samo, co trafia do build_info.json, np. {"statystyki": {...}, "klasy": ["chwast"],
+        "nierozpoznane_etykiety": [], "kontrola_podzialu": {"bledy": {}, "oficjalne": {}}, ...}
+
+    Uzywana w:
+        main() (build.py) - po odczytaniu opcji z terminala
+        tests/test_normalization.py, test_new_datasets.py - budowa malych zbiorow testowych
+    """
+    tax = Taxonomy(taksonomia)              # slownik klas; zapamietuje tez nierozpoznane etykiety
     wyjscie = Path(wyjscie)
     wyjscie.mkdir(parents=True, exist_ok=True)
 
-    # 1. adaptery
+    # 1. adaptery: kazdy zbior w swoim formacie -> lista Record (wspolny format)
     rekordy = []
     for nazwa, sciezka in zrodla.items():
         if not sciezka or not Path(sciezka).exists():
             log.warning("pomijam %s - brak katalogu %s", nazwa, sciezka)
             continue
+        # opcje tylko dla danego adaptera: WeedsGalore - pliki podzialu autorow,
+        # EWIS1 - z_sorgo i test_dni z opcje_adapterow
         kw = {"splity": splity_weedsgalore} if nazwa == "weedsgalore" else {}
         kw.update((opcje_adapterow or {}).get(nazwa, {}))
-        czesc = ADAPTERY[nazwa](sciezka, tax, **kw)
+        czesc = ADAPTERY[nazwa](sciezka, tax, **kw)      # np. ewis1("dane/ewis1", tax, test_dni=[...])
         log.info("%-12s %4d zdjec, %5d obiektow", nazwa, len(czesc),
                  sum(r.liczba_obiektow for r in czesc))
         rekordy += czesc
@@ -53,19 +97,16 @@ def zbuduj(zrodla, wyjscie, tryb_klas="binarnie", kafelek=896, zakladka=0.1,
     if not rekordy:
         raise SystemExit("nie wczytano zadnego zdjecia - sprawdz sciezki")
 
-    # 1b. limit zdjec z duzych zrodel (np. WeedMaize: 7784 zdjec)
-    rekordy = K.ogranicz(rekordy, limity or {}, seed)
-
-    # 2. deduplikacja
+    # 2. deduplikacja - prawie identyczne zdjecia odpadaja (lista odrzuconych -> duplikaty.json)
     rekordy, odrzucone = K.deduplikuj(rekordy, prog_dedup)
 
-    # 3. mapowanie klas na etykiety treningowe
+    # 3. mapowanie klas na etykiety treningowe (u nas "chwasty": jedna klasa, uprawa -> tlo)
     K.zastosuj_tryb_klas(rekordy, tax, tryb_klas)
 
-    # 4. podzial - PRZED kafelkowaniem
+    # 4. podzial - PRZED kafelkowaniem; cala grupa (pole + dzien) trafia do jednej czesci
     K.podziel(rekordy, proporcje, zachowaj_istniejace=oficjalne_splity,
               tylko_wlasne_do_testu=tylko_wlasne_do_testu)
-    kontrola = K.sprawdz_podzial(rekordy)
+    kontrola = K.sprawdz_podzial(rekordy)   # czy jakas grupa nie jest w kilku czesciach naraz
     if kontrola["bledy"]:
         log.error("BLAD: grupy w kilku czesciach podzialu: %s", kontrola["bledy"])
     for g, cz in kontrola["oficjalne"].items():
@@ -73,24 +114,25 @@ def zbuduj(zrodla, wyjscie, tryb_klas="binarnie", kafelek=896, zakladka=0.1,
                     "sprawdz, czy to samo miejsce pola nie trafia do dwoch czesci "
                     "(albo uzyj --wlasny-podzial)", g, "/".join(cz))
 
-    # 4b. skala zdjec z ziemi do skali drona - przed kafelkowaniem
+    # 4b. skala zdjec z ziemi do skali drona - przed kafelkowaniem (u nas EWIS1 x0.47)
     if skale:
         K.przeskaluj(rekordy, skale)
 
     M.zapisz(rekordy, wyjscie / "manifest_przed_kafelkami.jsonl")
 
-    # 5. kafelkowanie
+    # 5. kafelkowanie - duze zdjecia -> kafelki 896 px z zakladka; kafelek dziedziczy split zdjecia
     if kafelek:
         rekordy = K.kafelkuj_wszystkie(rekordy, kafelek=kafelek, zakladka=zakladka,
                                        udzial_pustych=udzial_pustych, seed=seed)
 
     M.zapisz(rekordy, wyjscie / "manifest.jsonl")
 
-    # 6. eksport
-    nazwy = sorted({o.klasa for r in rekordy for o in r.obiekty})
+    # 6. eksport - format YOLO (dataset/) + podglad ramek do obejrzenia
+    nazwy = sorted({o.klasa for r in rekordy for o in r.obiekty})   # klasy, ktore naprawde wystapily
     wynik = E.eksportuj(rekordy, wyjscie / "dataset", nazwy, kopiuj_obrazy)
     E.podglad_ramek(rekordy, wyjscie / "podglad")
 
+    # zapis build_info.json - wszystko, co potrzebne, zeby sprawdzic i odtworzyc budowe
     stat = M.statystyki(rekordy)
     info = {
         "zrodla": {k: str(v) for k, v in zrodla.items()},
@@ -98,13 +140,13 @@ def zbuduj(zrodla, wyjscie, tryb_klas="binarnie", kafelek=896, zakladka=0.1,
                       "udzial_pustych": udzial_pustych, "prog_dedup": prog_dedup,
                       "proporcje": list(proporcje), "seed": seed,
                       "oficjalne_splity": oficjalne_splity,
-                      "skale": skale or {}, "limity": limity or {},
+                      "skale": skale or {},
                       "kolory_weedsgalore": E.KOLORY_WG["tryb"]},
         "statystyki": stat,
         "klasy": wynik["klasy"],
         "obiektow_na_klase": wynik["obiektow"],
         "odrzucone_duplikaty": len(odrzucone),
-        "nierozpoznane_etykiety": tax.raport_nieznanych(),
+        "nierozpoznane_etykiety": tax.raport_nieznanych(),   # sprawdza to final_model.sh
         "kontrola_podzialu": kontrola,
     }
     E.zapisz_info(wyjscie, info)
@@ -114,9 +156,26 @@ def zbuduj(zrodla, wyjscie, tryb_klas="binarnie", kafelek=896, zakladka=0.1,
 
 
 def main(argv=None):
+    """Wiersz polecen: czyta opcje, buduje zbior przez zbuduj() i wypisuje podsumowanie.
+
+    Po co: zeby budowe zbioru mozna bylo odpalic z terminala, np. z final_model.sh.
+
+    Argumenty:
+        argv - lista opcji jak w terminalu, np. ["--ewis1", "dane/ewis1", "-o", "zb"];
+               None = wez z sys.argv (normalne uruchomienie)
+
+    Zwraca:
+        0 - kod wyjscia (sukces); wypisuje liczby, klasy, podzial, ostrzezenia o etykietach
+
+    Uzywana w:
+        python -m normalization.build (if __name__ == "__main__")
+        scripts/final_model.sh krok 1 - trzy razy: WeedsGalore, Sudars, EWIS1
+        tests/test_colors.py, test_new_datasets.py - sprawdzanie opcji
+    """
+    # __doc__ = docstring na gorze pliku - pokazuje sie w --help
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    for z in ADAPTERY:
+    for z in ADAPTERY:                      # --weedsgalore, --sudars, --ewis1, ... (po jednej na zbior)
         ap.add_argument(f"--{z}", help=f"katalog zbioru {z}")
     ap.add_argument("-o", "--output", default="zbior")
     ap.add_argument("--tryb-klas", default="binarnie",
@@ -135,11 +194,10 @@ def main(argv=None):
                     help="ignoruj oficjalne podzialy autorow zbiorow i podziel "
                          "wszystko po grupach (rozlacznie, kosztem porownywalnosci "
                          "z wynikami z publikacji)")
+    # action="append": opcje mozna podac kilka razy, np. --skala ewis1=0.47 --skala sudars=0.5
     ap.add_argument("--skala", action="append", default=[],
                     help="ZRODLO=WSPOLCZYNNIK - zmniejsz zdjecia zrodla do skali drona, "
-                         "np. weedmaize=0.144 (GSD 0,36 -> 2,5 mm/px)")
-    ap.add_argument("--maks-zdjec", action="append", default=[],
-                    help="ZRODLO=N - najwyzej N zdjec z tego zrodla, np. weedmaize=2000")
+                         "np. ewis1=0.47 (GSD 1,18 -> 2,5 mm/px)")
     ap.add_argument("--proporcje", type=float, nargs=3, default=(0.70, 0.15, 0.15),
                     metavar=("TRAIN", "VAL", "TEST"),
                     help="proporcje podzialu; 1 0 0 = wszystko do treningu (zbior pomocniczy)")
@@ -153,30 +211,45 @@ def main(argv=None):
     ap.add_argument("-v", "--verbose", action="store_true")
     a = ap.parse_args(argv)
 
+    # logi na terminal (stderr): INFO domyslnie, DEBUG z -v
     logging.basicConfig(level=logging.DEBUG if a.verbose else logging.INFO,
                         format="%(levelname)-7s %(message)s")
+    # tylko zbiory podane w opcjach, np. {"ewis1": "dane/ewis1"}
     zrodla = {z: getattr(a, z) for z in ADAPTERY if getattr(a, z)}
     if not zrodla:
         ap.error("podaj co najmniej jeden zbior, np. --weedsgalore sciezka/")
 
-    E.ustaw_kolory_weedsgalore(a.weedsgalore_kolory)
+    E.ustaw_kolory_weedsgalore(a.weedsgalore_kolory)   # ustawienie globalne w export.py
 
     def _pary(lista, typ):
+        """Zamienia opcje "ZRODLO=WARTOSC" na slownik.
+
+        Argumenty:
+            lista - napisy z terminala, np. ["ewis1=0.47"]
+            typ   - na co zamienic wartosc, np. float (skala)
+
+        Zwraca:
+            dict, np. {"ewis1": 0.47}
+
+        Uzywana w:
+            main() - dla --skala
+        """
         out = {}
         for x in lista:
-            k, _, v = x.partition("=")
+            k, _, v = x.partition("=")      # "ewis1=0.47" -> ("ewis1", "=", "0.47")
             out[k] = typ(v)
         return out
 
     info = zbuduj(zrodla, a.output, a.tryb_klas, a.kafelek, a.zakladka,
                   a.udzial_pustych, a.prog_dedup, proporcje=tuple(a.proporcje),
-                  skale=_pary(a.skala, float), limity=_pary(a.maks_zdjec, int),
+                  skale=_pary(a.skala, float),
                   opcje_adapterow={"ewis1": {"z_sorgo": a.ewis1_z_sorgo, "test_dni": a.ewis1_test_dni}},
                   splity_weedsgalore=a.splity_weedsgalore, taksonomia=a.taksonomia,
                   kopiuj_obrazy=not a.bez_obrazow,
                   tylko_wlasne_do_testu=a.tylko_wlasne_do_testu,
                   oficjalne_splity=not a.wlasny_podzial, seed=a.seed)
 
+    # podsumowanie na terminal (w final_model.sh idzie do /dev/null)
     s = info["statystyki"]
     print()
     print(f"  zdjec/kafelkow       {s['zdjec']}")
@@ -186,6 +259,8 @@ def main(argv=None):
     print(f"  podzial              {s['splity']}")
     print(f"  odrzucone duplikaty  {info['odrzucone_duplikaty']}")
 
+    # nierozpoznane etykiety tylko OSTRZEGAJA (program idzie dalej) - dlatego final_model.sh
+    # sprawdza je osobno w build_info.json
     nz = info["nierozpoznane_etykiety"]
     if nz:
         print(f"\n  UWAGA: {len(nz)} nierozpoznanych etykiet - dopisz do taxonomy.yaml:")

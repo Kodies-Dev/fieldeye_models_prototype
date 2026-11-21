@@ -2,8 +2,8 @@
 
 Sam trening wymaga pakietu ultralytics i karty graficznej, wiec nie jest tu
 uruchamiany. Testowane jest wszystko wokol: plan, kontrola danych przed
-treningiem, rozklad rozmiarow obiektow, liczenie IoU, dobor zbioru
-kalibracyjnego i komunikaty bledow przy braku ultralytics.
+treningiem, wczytywanie etykiet, miary oceny, dobor zbioru kalibracyjnego
+i komunikaty bledow przy braku ultralytics.
 """
 
 import json
@@ -18,8 +18,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from models.evaluation import (MALE, _iou, rozklad_rozmiarow,          # noqa: E402
-                          wczytaj_etykiety)
+from models.evaluation import wczytaj_etykiety  # noqa: E402
 from models.plan import Stage, TrainingPlan, katalog_etykiet, sprawdz_dane  # noqa: E402
 
 yaml = pytest.importorskip("yaml")
@@ -52,36 +51,15 @@ def _zbior(katalog, ile_train=6, ile_val=2, ile_test=2, rozmiar=(640, 640),
 
 # ---------------------------------------------------------------- plan
 
-def test_domyslny_plan_ma_trzy_etapy():
-    p = TrainingPlan.domyslny("a.yaml", "b.yaml", "c.yaml")
-    assert [e.nazwa for e in p.etapy] == ["1-naziemne", "2-lotnicze", "3-wlasne"]
 
-
-def test_lr_maleje_z_etapami():
-    """Kazdy kolejny etap uczy sie wolniej - inaczej zapomni poprzedni."""
-    p = TrainingPlan.domyslny("a.yaml", "b.yaml", "c.yaml")
-    lr = [e.lr0 for e in p.etapy]
-    assert lr == sorted(lr, reverse=True)
-
-
-def test_epoki_maleja_z_etapami():
-    p = TrainingPlan.domyslny("a.yaml", "b.yaml", "c.yaml")
-    ep = [e.epoki for e in p.etapy]
-    assert ep == sorted(ep, reverse=True)
-
-
-def test_brakujace_etapy_pomijane():
-    p = TrainingPlan.domyslny(None, None, "c.yaml")
-    assert len(p.etapy) == 1 and p.etapy[0].nazwa == "3-wlasne"
-
-
-def test_plan_bez_danych_to_blad():
-    with pytest.raises(ValueError):
-        TrainingPlan.domyslny(None, None, None)
+def _plan(dane):
+    """Plan z jednym etapem na podanym data.yaml (jak plan_dane_ewis1_bt.json)."""
+    return TrainingPlan(etapy=[Stage("etap", str(dane), epoki=1, lr0=0.01)])
 
 
 def test_plan_zapis_i_odczyt(tmp_path):
-    p = TrainingPlan.domyslny("a.yaml", "b.yaml", "c.yaml")
+    p = TrainingPlan(etapy=[Stage("a", "a.yaml", epoki=10, lr0=0.01),
+                            Stage("b", "b.yaml", epoki=5, lr0=0.001)])
     p.batch = 8
     p.zapisz(tmp_path / "plan.json")
     w = TrainingPlan.wczytaj(tmp_path / "plan.json")
@@ -167,44 +145,6 @@ def test_wczytanie_etykiet_przelicza_na_piksele(tmp_path):
     assert (x0, y0, x1, y1) == pytest.approx((400, 450, 600, 550), abs=1)
 
 
-def test_rozklad_rozmiarow_liczy_kategorie():
-    etykiety = {"a": [(0, 0, 0, 20, 20),        # pole 400 -> male
-                      (0, 0, 0, 50, 50),        # 2500 -> srednie
-                      (1, 0, 0, 200, 200)]}     # 40000 -> duze
-    r = rozklad_rozmiarow(etykiety, ["chwast", "uprawa"])
-    assert r["kategorie"] == {"male": 1, "srednie": 1, "duze": 1}
-    assert r["obiektow"] == 3
-    assert r["per_klasa"]["uprawa"] == {"duze": 1}
-
-
-def test_prog_malego_obiektu_zgodny_z_coco():
-    assert MALE == 32 ** 2
-
-
-def test_rozklad_na_prawdziwym_zbiorze(tmp_path):
-    y = _zbior(tmp_path / "ds")
-    ds = tmp_path / "ds"
-    r = rozklad_rozmiarow(wczytaj_etykiety(ds / "labels" / "train",
-                                           ds / "images" / "train"))
-    assert r["obiektow"] == 18                 # 6 obrazow x 3 ramki
-    assert 0 <= r["udzial_malych"] <= 1
-
-
-# ---------------------------------------------------------------- IoU
-
-def test_iou_identyczne_ramki():
-    assert _iou((0, 0, 10, 10), (0, 0, 10, 10)) == pytest.approx(1.0)
-
-
-def test_iou_rozlaczne():
-    assert _iou((0, 0, 10, 10), (20, 20, 30, 30)) == 0.0
-
-
-def test_iou_polowa():
-    # dwie ramki 10x10 nachodzace na sie w polowie: 50 / 150
-    assert _iou((0, 0, 10, 10), (5, 0, 15, 10)) == pytest.approx(50 / 150)
-
-
 # ---------------------------------------------------------------- kalibracja
 
 def test_zbior_kalibracyjny(tmp_path):
@@ -249,14 +189,6 @@ def test_rozmiary_modelu(tmp_path):
     assert r["szacowany_INT8_MB"] == pytest.approx(3.2, abs=0.1)
 
 
-def test_wniosek_o_kwantyzacji():
-    from models.export import _wniosek
-
-    assert "pomijalna" in _wniosek(0.005)
-    assert "akceptowalna" in _wniosek(0.02)
-    assert "QAT" in _wniosek(0.08)
-
-
 # ---------------------------------------------------------------- brak ultralytics
 
 @pytest.mark.skipif(
@@ -264,7 +196,7 @@ def test_wniosek_o_kwantyzacji():
     reason="ultralytics jest zainstalowany")
 def test_czytelny_komunikat_bez_ultralytics(tmp_path):
     """Bez ultralytics ma byc jasna instrukcja, nie ModuleNotFoundError."""
-    from models.evaluation import _yolo
+    from models.training import _yolo
 
     with pytest.raises(ImportError, match="pip install ultralytics"):
         _yolo()
@@ -290,15 +222,6 @@ def test_cli_sprawdz_zwraca_blad_przy_przecieku(tmp_path):
     assert "PRZECIEK" in r.stdout
 
 
-def test_cli_rozmiary(tmp_path):
-    _zbior(tmp_path / "ds")
-    r = subprocess.run([sys.executable, "-m", "models.cli", "rozmiary",
-                        str(tmp_path / "ds"), "--split", "train"],
-                       capture_output=True, text=True, cwd=ROOT)
-    assert r.returncode == 0, r.stderr
-    assert json.loads(r.stdout[r.stdout.index("{"):r.stdout.rindex("}") + 1])["obiektow"] == 18
-
-
 # ---------------------------------------------------------------- trening (bez prawdziwego ultralytics)
 
 class _FakeYOLO:
@@ -320,7 +243,7 @@ class _FakeYOLO:
 def test_wagi_szukane_tam_gdzie_zapisal_je_ultralytics(tmp_path, monkeypatch):
     from models import training as trening
     monkeypatch.setattr(trening, "_yolo", lambda: _FakeYOLO)
-    plan = TrainingPlan.domyslny(None, None, str(_zbior(tmp_path / "ds")))
+    plan = _plan(_zbior(tmp_path / "ds"))
     plan.wyjscie = str(tmp_path / "out")
     best, _ = trening.trenuj_etap(plan.etapy[0], "yolov8n.pt", plan)
     assert best.exists()
@@ -330,14 +253,14 @@ def test_lr0_nie_jest_ignorowane(tmp_path, monkeypatch):
     """Bez jawnego optymalizatora ultralytics ignoruje lr0 z planu."""
     from models import training as trening
     monkeypatch.setattr(trening, "_yolo", lambda: _FakeYOLO)
-    plan = TrainingPlan.domyslny(None, None, str(_zbior(tmp_path / "ds")))
+    plan = _plan(_zbior(tmp_path / "ds"))
     plan.wyjscie = str(tmp_path / "out")
     trening.trenuj_etap(plan.etapy[0], "yolov8n.pt", plan)
     assert _FakeYOLO.ostatnie["optimizer"] not in (None, "auto")
     assert _FakeYOLO.ostatnie["lr0"] == plan.etapy[0].lr0
 
 
-# ---------------------------------------------------------------- dobor progu
+# ---------------------------------------------------------------- miary oceny
 
 def test_czulosc_nie_rosnie_z_progiem():
     """Blad wczesniejszej wersji: czulosc przy progu 0.2 wyszla wyzsza niz przy 0.1."""
@@ -365,49 +288,6 @@ def test_pominiete_gdy_brak_predykcji():
     from models.evaluation import pr_przy_progach
     (w,) = pr_przy_progach({}, {"a": [(0, 0, 0, 10, 10)]}, [0.25])
     assert (w["czulosc"], w["pominiete"]) == (0.0, 1)
-
-
-class _FakeBox:
-    def __init__(self, k, c, box):
-        self.cls, self.conf, self.xyxy = k, c, [box]
-
-
-class _FakePrediction:
-    """Udaje YOLO.predict: zwraca prawdziwe ramki z etykiet z pewnoscia 0.6."""
-    def __init__(self, wagi):
-        pass
-
-    def predict(self, sciezka, **kw):
-        import cv2
-        from pathlib import Path as P
-        p = P(sciezka)
-        h, w = cv2.imread(str(p)).shape[:2]
-        txt = p.parent.parent.parent / "labels" / p.parent.name / (p.stem + ".txt")
-        boxes = []
-        for l in txt.read_text().split("\n"):
-            if l.strip():
-                k, cx, cy, bw, bh = map(float, l.split())
-                boxes.append(_FakeBox(int(k), 0.6, [(cx - bw / 2) * w, (cy - bh / 2) * h,
-                                                    (cx + bw / 2) * w, (cy + bh / 2) * h]))
-        return [type("R", (), {"boxes": boxes})()]
-
-
-def test_dobierz_prog_na_atrapie(tmp_path, monkeypatch):
-    from models import evaluation as ocena
-    monkeypatch.setattr(ocena, "_yolo", lambda: _FakePrediction)
-    y = _zbior(tmp_path / "ds")
-    w = ocena.dobierz_prog("x.pt", y, split="val", progi=(0.5, 0.7))
-    p05, p07 = w["wyniki"]
-    assert p05["czulosc"] == 1.0 and p05["precyzja"] == 1.0      # wszystko trafione
-    assert p07["czulosc"] == 0.0                                  # wszystko odciete
-    assert w["zalecany_prog"] == 0.5 and w["split"] == "val"
-
-
-def test_cli_prog_domyslnie_na_walidacji():
-    """Dobor progu na tescie bylby ukrytym przeciekiem."""
-    from models.cli import parser
-    a = parser().parse_args(["prog", "m.pt", "d.yaml"])
-    assert a.split == "val"
 
 
 # ---------------------------------------------------------------- urzadzenie (Windows / Mac)
@@ -458,21 +338,8 @@ def test_cli_srodowisko():
     assert "wybrane_urzadzenie" in r.stdout
 
 
-def test_etap2_lr_z_ablacji():
-    """Ablacja: lr0 0.001 w etapie 2 dalo wyraznie gorszy wynik niz 0.01."""
-    p = TrainingPlan.domyslny("a.yaml", "b.yaml", "c.yaml")
-    assert p.etapy[1].lr0 == 0.01
-
-
-def test_cli_ocen_ma_prog():
-    from models.cli import parser
-    a = parser().parse_args(["ocen", "m.pt", "d.yaml", "--male-obiekty", "--prog", "0.15"])
-    assert a.prog == 0.15
-    assert parser().parse_args(["ocen", "m.pt", "d.yaml"]).prog == 0.25
-
-
 def test_train_jako_lista_katalogow(tmp_path):
-    """data.yaml z kilkoma katalogami treningowymi (np. WeedsGalore + CoFly)."""
+    """data.yaml z kilkoma katalogami treningowymi (np. WeedsGalore + Sudars)."""
     a = _zbior(tmp_path / "a", ile_train=4)
     b = _zbior(tmp_path / "b", ile_train=3)
     dane = yaml.safe_load(a.read_text())
@@ -513,7 +380,7 @@ def test_augmentacje_z_planu_trafiaja_do_treningu(tmp_path, monkeypatch):
 def test_bez_augmentacji_nic_nie_dochodzi(tmp_path, monkeypatch):
     from models import training as trening
     monkeypatch.setattr(trening, "_yolo", lambda: _FakeYOLO)
-    plan = TrainingPlan.domyslny(None, None, str(_zbior(tmp_path / "ds")))
+    plan = _plan(_zbior(tmp_path / "ds"))
     plan.wyjscie = str(tmp_path / "out")
     trening.trenuj_etap(plan.etapy[0], "yolov8n.pt", plan)
     assert "degrees" not in _FakeYOLO.ostatnie
@@ -530,125 +397,3 @@ def test_ocena_wedlug_dni():
     assert w["2023-05-25"]["czulosc"] == 0.5
     assert w["2023-06-06"]["czulosc"] == 1.0 and w["2023-06-06"]["falszywe"] == 1
     assert w["razem"]["trafione"] == 2 and w["razem"]["obrazow"] == 2
-
-
-def test_cli_ocen_wedlug_dni():
-    from models.cli import parser
-    a = parser().parse_args(["ocen", "m.pt", "d.yaml", "--wedlug-dni", "--prog", "0.15"])
-    assert a.wedlug_dni and a.prog == 0.15
-
-
-# ---------------------------------------------------------------- podzial calymi dniami
-
-def _zbior_dni(katalog, dni=("2023-05-25", "2023-05-30", "2023-06-06", "2023-06-15"), n=20):
-    """Jak zbior_lotnicze: kafelki z kilku dni rozrzucone po train/val/test."""
-    czesci = ["train", "val", "test"]
-    for c in czesci:
-        (katalog / "images" / c).mkdir(parents=True, exist_ok=True)
-        (katalog / "labels" / c).mkdir(parents=True, exist_ok=True)
-    i = 0
-    for d in dni:
-        for k in range(n):
-            c = czesci[i % 3]
-            nazwa = f"weedsgalore__{d}__{d}_{k:04d}"
-            cv2.imwrite(str(katalog / "images" / c / f"{nazwa}.jpg"), np.zeros((32, 32, 3), np.uint8))
-            (katalog / "labels" / c / f"{nazwa}.txt").write_text("0 0.5 0.5 0.2 0.2\n")
-            i += 1
-    (katalog / "data.yaml").write_text(yaml.safe_dump(
-        {"path": str(katalog), "train": "images/train", "val": "images/val",
-         "test": "images/test", "names": {0: "chwast"}}))
-    return katalog
-
-
-def test_podzial_dniami_caly_dzien_w_tescie(tmp_path):
-    from models.splits import podziel_dniami
-    zb = _zbior_dni(tmp_path / "zb")
-    info = podziel_dniami(zb, tmp_path / "out", "2023-05-25", udzial_val=0.15)
-    ds = tmp_path / "out" / "dataset"
-    test = list((ds / "images" / "test").iterdir())
-    assert len(test) == 20 and all("2023-05-25" in p.name for p in test)
-    for c in ("train", "val"):
-        assert not any("2023-05-25" in p.name for p in (ds / "images" / c).iterdir())
-    # brak przecieku, wszystko ma etykiety, kontrola danych przechodzi
-    ok, problemy, _ = sprawdz_dane(ds / "data.yaml")
-    assert ok, problemy
-    assert info["obrazow"]["train"] + info["obrazow"]["val"] == 60
-    # dokladnie: 0.15 * 80 = 12 kafelkow walidacji, po 4 z kazdego z 3 dni
-    assert info["obrazow"]["val"] == 12
-    val = list((ds / "images" / "val").iterdir())
-    for d in ("2023-05-30", "2023-06-06", "2023-06-15"):
-        assert sum(d in p.name for p in val) == 4
-
-
-def test_podzial_dniami_powtarzalny(tmp_path):
-    from models.splits import podziel_dniami
-    zb = _zbior_dni(tmp_path / "zb")
-    podziel_dniami(zb, tmp_path / "a", "2023-06-06")
-    podziel_dniami(zb, tmp_path / "b", "2023-06-06")
-    nazwy = lambda k: sorted(p.name for p in (k / "dataset" / "images" / "val").iterdir())
-    assert nazwy(tmp_path / "a") == nazwy(tmp_path / "b")
-
-
-def test_podzial_dniami_z_dodatkowym_zbiorem(tmp_path):
-    from models.splits import podziel_dniami
-    zb = _zbior_dni(tmp_path / "zb")
-    inny = _zbior(tmp_path / "sudars")              # zbior bez dat w nazwach
-    podziel_dniami(zb, tmp_path / "out", "2023-05-25", dodatkowe_treningowe=[inny.parent])
-    y = tmp_path / "out" / "dataset" / "data_z_dodatkowymi.yaml"
-    d = yaml.safe_load(y.read_text())
-    assert d["train"][0] == "images/train" and len(d["train"]) == 2
-    assert d["val"] == "images/val" and d["test"] == "images/test"   # tylko zbior glowny
-    ok, problemy, info = sprawdz_dane(y)
-    assert ok, problemy
-
-
-def test_podzial_dniami_nieznany_dzien(tmp_path):
-    from models.splits import podziel_dniami
-    zb = _zbior_dni(tmp_path / "zb")
-    with pytest.raises(ValueError, match="dostepne"):
-        podziel_dniami(zb, tmp_path / "out", "2099-01-01")
-
-
-# ---------------------------------------------------------------- analiza zbioru
-
-def test_analiza_zbioru(tmp_path):
-    from models.analysis import analizuj
-    zb = _zbior_dni(tmp_path / "zb", n=6)            # 4 dni x 6 obrazow 32x32, po 1 obiekcie
-    r = analizuj(zb / "data.yaml", tmp_path / "raport")
-    assert r["razem"]["obrazow"] == 24 and r["razem"]["obiektow"] == 24
-    assert set(r["dni"]) == {"2023-05-25", "2023-05-30", "2023-06-06", "2023-06-15"}
-    assert r["dni"]["2023-05-25"]["obrazow"] == 6
-    # ramka 0.2 x 0.2 obrazu 32 px -> bok 6.4 px, wszystkie obiekty male
-    assert r["razem"]["bok_px"]["mediana"] == pytest.approx(6.4, abs=0.01)
-    assert r["razem"]["udzial"]["male"] == 1.0
-    assert sum(r["czesci"][c]["obrazow"] for c in r["czesci"]) == 24
-    assert (tmp_path / "raport" / "raport.json").exists()
-    assert "Dni lotu" in (tmp_path / "raport" / "raport.md").read_text()
-
-
-def test_analiza_wykresy(tmp_path):
-    pytest.importorskip("matplotlib")
-    from models.analysis import analizuj
-    r = analizuj(_zbior_dni(tmp_path / "zb", n=4) / "data.yaml", tmp_path / "raport")
-    assert len(r["wykresy"]) == 4
-    assert all(Path(p).stat().st_size > 1000 for p in r["wykresy"])
-
-
-def test_analiza_puste_obrazy_i_lista_katalogow(tmp_path):
-    from models.analysis import analizuj
-    zb = _zbior_dni(tmp_path / "zb", n=3)
-    pusty = next((zb / "labels" / "train").iterdir())
-    pusty.write_text("")                              # obraz bez obiektow
-    inny = _zbior(tmp_path / "inny", ile_train=2)
-    d = yaml.safe_load((zb / "data.yaml").read_text())
-    d["train"] = ["images/train", str(inny.parent / "images" / "train")]
-    (zb / "data.yaml").write_text(yaml.safe_dump(d))
-    r = analizuj(zb / "data.yaml")
-    assert r["razem"]["puste"] >= 1
-    assert r["czesci"]["train"]["obrazow"] == 4 + 2  # 12 obrazow / 3 czesci + 2 z drugiego zbioru
-
-
-def test_cli_analiza():
-    from models.cli import parser
-    a = parser().parse_args(["analiza", "d.yaml", "-o", "wyniki/an"])
-    assert a.dane == "d.yaml" and a.output == "wyniki/an"

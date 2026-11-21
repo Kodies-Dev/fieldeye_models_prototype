@@ -1,22 +1,28 @@
-"""Eksport modelu do ONNX i przygotowanie do kwantyzacji INT8 pod FPGA.
+"""Eksport modelu do ONNX i przygotowanie do kwantyzacji INT8 pod akcelerator.
 
-Scieżka wdrozeniowa:
+Sciezka wdrozeniowa:
 
     .pt (PyTorch, FP32)
       -> ONNX            format posredni, rozumiany przez narzedzia wdrozeniowe
       -> kwantyzacja     FP32 -> INT8, czterokrotnie mniejszy model
-      -> kompilacja      pod konkretny uklad (Vitis AI dla AMD/Xilinx)
+      -> kompilacja      pod konkretny uklad
 
 Ten modul obsluguje dwa pierwsze kroki. Kompilacja wymaga narzedzi producenta
 ukladu i wykonuje sie poza tym projektem.
 
+W projekcie ukladem jest Hailo-8 (Raspberry Pi 5 + AI HAT+).
+Droga modelu koncowego (scripts/final_model.sh, krok 4 -> scripts/HAILO.md):
+    do_onnx()               -> hailo/final/fieldeye_final_1280.onnx (wejscie 1280, opset 11)
+    przygotuj_kalibracje()  -> hailo/final/kalibracja_1280/ (128 kafelkow treningowych, letterbox)
+    scripts/compile_hef.py  -> .hef (na WSL, kompilator Hailo - kwantyzacja na tych zdjeciach)
+    scripts/check_hef.sh    -> sprawdzenie .hef na Pi (strata mierzona przez ocen-detektor)
+
 UWAGA o kwantyzacji: potreningowa (PTQ) jest szybka, ale kosztuje kilka punktow
 mAP. Jesli strata okaze sie za duza, trzeba przejsc na kwantyzacje swiadoma
 treningu (QAT), ktora wymaga powtorzenia treningu z symulacja INT8.
-Pomiar straty jest tutaj wazniejszy niz sam eksport - patrz porownaj_po_kwantyzacji().
+Strate mierzy scripts/check_hef.sh (ten sam ocen-detektor dla .pt i .hef).
 """
 
-import json
 import logging
 import shutil
 from pathlib import Path
@@ -29,9 +35,25 @@ def do_onnx(model, wyjscie=None, wejscie=640, uprosc=True, opset=12, dynamiczne=
 
     opset 12 zamiast najnowszego: narzedzia wdrozeniowe pod FPGA czesto
     obsluguja starsze wersje. Jesli kompilator odrzuci model, sprobuj nizszego.
+    (Dla Hailo final_model.sh podaje --opset 11.)
 
     dynamiczne=False (staly rozmiar wejscia) jest wymagane przez wiekszosc
     akceleratorow - potok sprzetowy musi znac rozmiary z gory.
+
+    Argumenty:
+        model       - plik .pt, np. "models/weights/fieldeye_final.pt"
+        wyjscie     - gdzie zapisac .onnx albo None (obok modelu)
+        wejscie     - staly bok wejscia, np. 1280
+        uprosc      - True = uproszczenie grafu (onnxsim)
+        opset       - wersja zestawu operacji ONNX, np. 11
+        dynamiczne  - False = staly rozmiar wejscia
+
+    Zwraca:
+        Path do pliku .onnx
+
+    Uzywana w:
+        models/cli.py cmd_onnx() - komenda "onnx" w scripts/final_model.sh (krok 4)
+        i scripts/przygotuj_folder.sh
     """
     try:
         from ultralytics import YOLO
@@ -62,6 +84,21 @@ def przygotuj_kalibracje(katalog_obrazow, wyjscie, liczba=200, seed=0, rozmiar=N
       - obrazy MUSZA pochodzic z rozkladu docelowego (nasze pole, nasza
         kamera), nie z publicznego zbioru - inaczej zakresy beda zle,
       - 100-500 obrazow w zupelnosci wystarcza; wiecej nie poprawia wyniku.
+    (Bez wlasnych danych final_model.sh bierze kafelki TRENINGOWE WeedsGalore i EWIS1 - nigdy testowe.)
+
+    Argumenty:
+        katalog_obrazow - folder ze zdjeciami (szukane rekurencyjnie)
+        wyjscie         - folder wyniku, np. "hailo/final/kalibracja_1280"
+        liczba          - ile losowych zdjec, np. 128
+        seed            - ziarno losowania (te same zdjecia przy kazdym uruchomieniu)
+        rozmiar         - bok wejscia sieci, np. 1280 -> letterbox (szare pasy 114) jak przy detekcji;
+                          None = kopie bez zmian
+
+    Zwraca:
+        (folder, lista) - folder zdjec i plik kalibracja.txt (obok folderu) z ich sciezkami
+
+    Uzywana w:
+        models/cli.py cmd_kalibracja() - komenda "kalibracja" w scripts/final_model.sh (krok 4)
     """
     import random
 
@@ -98,47 +135,21 @@ def przygotuj_kalibracje(katalog_obrazow, wyjscie, liczba=200, seed=0, rozmiar=N
     return wyjscie, lista
 
 
-def porownaj_po_kwantyzacji(model_fp32, model_int8, dane, split="test",
-                            wejscie=640, urzadzenie=None):
-    """Ile mAP kosztuje kwantyzacja - mierzone na tym samym zbiorze testowym.
-
-    To jest liczba, ktora trzeba podac w dokumentacji projektu. Bez niej
-    nie wiadomo, czy model na FPGA dziala tak samo dobrze jak na komputerze.
-    """
-    from .evaluation import ocen
-
-    a = ocen(model_fp32, dane, split, wejscie, urzadzenie)
-    b = ocen(model_int8, dane, split, wejscie, urzadzenie)
-    return {
-        "fp32": a,
-        "int8": b,
-        "strata_mAP50": round(a["mAP50"] - b["mAP50"], 4),
-        "strata_mAP50_95": round(a["mAP50_95"] - b["mAP50_95"], 4),
-        "strata_czulosci": round(a["czulosc"] - b["czulosc"], 4),
-        "wniosek": _wniosek(a["mAP50"] - b["mAP50"]),
-    }
-
-
-def _wniosek(strata):
-    if strata < 0.01:
-        return "strata pomijalna - kwantyzacja potreningowa wystarczy"
-    if strata < 0.03:
-        return "strata akceptowalna - warto sprawdzic inny zbior kalibracyjny"
-    return ("strata znaczaca - rozwaz kwantyzacje swiadoma treningu (QAT) "
-            "albo wiekszy/lepiej dobrany zbior kalibracyjny")
-
-
 def rozmiary(model):
-    """Rozmiar pliku i szacunek po kwantyzacji - do tabeli w dokumentacji."""
+    """Rozmiar pliku i szacunek po kwantyzacji - do tabeli w dokumentacji.
+
+    Argumenty:
+        model - plik modelu (.pt albo .onnx)
+
+    Zwraca:
+        dict, np. {"plik": "...onnx", "rozmiar_MB": 12.3, "szacowany_INT8_MB": 3.08, "uwaga": "..."}
+
+    Uzywana w:
+        models/cli.py cmd_onnx() - wypis po eksporcie
+    """
     p = Path(model)
     mb = p.stat().st_size / 1e6
     return {"plik": str(p), "rozmiar_MB": round(mb, 2),
             "szacowany_INT8_MB": round(mb / 4, 2),
             "uwaga": "szacunek: INT8 to 1 bajt na wage zamiast 4 (FP32)"}
 
-
-def zapisz(wynik, sciezka):
-    p = Path(sciezka)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(wynik, indent=2, ensure_ascii=False), encoding="utf-8")
-    return p

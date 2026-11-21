@@ -1,12 +1,11 @@
-"""Testy sezonowosci: nadprobkowanie wczesnych dni, zbior z wybranych dni, progi wedlug dni.
+"""Testy sezonowosci: nadprobkowanie wczesnych dni lotu.
 
 Po co: male chwasty z poczatku sezonu (25.05, 30.05) sa najtrudniejsze, wiec w treningu
 modelu koncowego ich kafelki sa powielane (krok 2 w final_model.sh: 25.05 x3, 30.05 x2).
 Testy pilnuja, ze kopie trafiaja tylko do treningu (bez przecieku do walidacji i testu)
 i ze ponowne uruchomienie nie dokleja kolejnych kopii.
 
-Testowane: models/season.py (nadprobkuj, wybierz_dni, progi_wedlug_dni, ocen_z_progami_dni),
-           models/plan.py (sprawdz_dane), models/evaluation.py (ocen_wedlug_grup), parser models/cli.py.
+Testowane: models/season.py (nadprobkuj), models/plan.py (sprawdz_dane), parser models/cli.py.
 
     python -m pytest tests/test_season.py -q
 """
@@ -22,8 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from models.plan import sprawdz_dane  # noqa: E402
-from models.season import (nadprobkuj, ocen_z_progami_dni, progi_wedlug_dni,  # noqa: E402
-                           wybierz_dni)
+from models.season import nadprobkuj  # noqa: E402
 
 DNI = ["2023-05-25", "2023-05-30", "2023-06-06"]
 
@@ -41,7 +39,7 @@ def zbior(tmp_path):
         Path - folder zbioru z data.yaml, np. tmp_path / "ds"
 
     Uzywana w:
-        testach nadprobkowania i test_wybierz_dni()
+        testach nadprobkowania
     """
     ds = tmp_path / "ds"
     for czesc, n in (("train", 4), ("val", 2), ("test", 2)):
@@ -132,102 +130,8 @@ def test_ponowne_nadprobkowanie_nie_dokleja_kopii(zbior):
     assert len(list((zbior / "images" / "train_nadprob").glob("*.jpg"))) == 4
 
 
-def test_wybierz_dni(zbior, tmp_path):
-    """wybierz_dni: nowy zbior tylko z wybranych dni, poprawny data.yaml, bez innych dni.
-
-    Po co: eksperymenty z samym poczatkiem sezonu - zbior nie moze zawierac pozostalych dni.
-
-    Argumenty:
-        zbior    - fixture: maly zbior YOLO
-        tmp_path - fixture pytest: folder na nowy zbior
-
-    Zwraca:
-        nic - pytest sprawdza asserty
-
-    Uzywana w:
-        pytest (python -m pytest tests)
-    """
-    ile = wybierz_dni(zbior, ["2023-05-25", "2023-05-30"], tmp_path / "maj")
-    assert ile == {"train": 8, "val": 4, "test": 4}
-    nowy = tmp_path / "maj" / "dataset" / "data.yaml"
-    ok, problemy, _ = sprawdz_dane(nowy)
-    assert ok, problemy
-    assert not list((tmp_path / "maj" / "dataset" / "images" / "test").glob("*2023-06-06*"))
-
-
-def _pred_prawda():
-    """Dzien 'a': siewki z niska pewnoscia (0,1); dzien 'b': rosliny z wysoka (0,8) i falszywki 0,1.
-
-    Po co: sztuczne wykrycia, przy ktorych jeden wspolny prog jest zly dla jednego z dni.
-
-    Argumenty:
-        brak
-
-    Zwraca:
-        (pred, prawda) - slowniki nazwa_kafelka -> lista ramek,
-        pred: (klasa, pewnosc, x0, y0, x1, y1), prawda: (klasa, x0, y0, x1, y1)
-
-    Uzywana w:
-        test_progi_wedlug_dni_nizszy_w_maju(), test_ocen_z_progami_dni_lepiej_niz_jeden_prog()
-    """
-    prawda, pred = {}, {}
-    for i in range(4):
-        prawda[f"x__2023-05-25_{i}"] = [(0, 0, 0, 10, 10)]
-        pred[f"x__2023-05-25_{i}"] = [(0, 0.10, 0, 0, 10, 10)]
-        prawda[f"x__2023-06-06_{i}"] = [(0, 0, 0, 10, 10)]
-        pred[f"x__2023-06-06_{i}"] = [(0, 0.80, 0, 0, 10, 10), (0, 0.10, 50, 50, 60, 60)]
-    return pred, prawda
-
-
-def test_progi_wedlug_dni_nizszy_w_maju():
-    """progi_wedlug_dni: dla 25.05 prog niski (czulosc 1), dla 06.06 wyzszy (precyzja 1).
-
-    Po co: osobny prog na dzien moze lapac male siewki bez zalewu falszywek pozniej.
-
-    Argumenty:
-        brak
-
-    Zwraca:
-        nic - pytest sprawdza asserty
-
-    Uzywana w:
-        pytest (python -m pytest tests)
-    """
-    pred, prawda = _pred_prawda()
-    p = progi_wedlug_dni(pred, prawda)
-    assert p["2023-05-25"]["prog"] <= 0.10 and p["2023-05-25"]["czulosc"] == 1.0
-    assert p["2023-06-06"]["prog"] > 0.10 and p["2023-06-06"]["precyzja"] == 1.0
-
-
-def test_ocen_z_progami_dni_lepiej_niz_jeden_prog():
-    """Progi wedlug dni lepsze niz jeden prog 0.15; dzien bez progu dostaje domyslny.
-
-    Po co: sprawdza ocene z progami dni i wartosc domyslna dla dnia, ktorego nie bylo w walidacji.
-
-    Argumenty:
-        brak
-
-    Zwraca:
-        nic - pytest sprawdza asserty
-
-    Uzywana w:
-        pytest (python -m pytest tests)
-    """
-    from models.evaluation import ocen_wedlug_grup
-    pred, prawda = _pred_prawda()
-    jeden = ocen_wedlug_grup(pred, prawda, 0.15)
-    progi = progi_wedlug_dni(pred, prawda)
-    dni = ocen_z_progami_dni(pred, prawda, progi)
-    assert jeden["2023-05-25"]["czulosc"] == 0.0 and dni["2023-05-25"]["czulosc"] == 1.0
-    assert dni["2023-06-06"]["falszywe"] == 0
-    r = dni["razem"]
-    assert r["trafione"] == 8 and r["pominiete"] == 0 and r["czulosc"] == 1.0
-    # dzien bez progu z walidacji dostaje prog domyslny
-    assert ocen_z_progami_dni(pred, prawda, {}, 0.15)["2023-05-25"]["prog"] == 0.15
-
-
 def test_cli_sezon():
-    """Opcje komend nadprobkuj (--waga, --dodaj-trening), ocen-sezon i prog-dni.
+    """Opcje komendy nadprobkuj (--waga, --dodaj-trening).
 
     Po co: final_model.sh wola nadprobkuj z tymi opcjami - zmiana ich nazw zepsulaby trening.
 
@@ -244,6 +148,3 @@ def test_cli_sezon():
     a = parser().parse_args(["nadprobkuj", "zb", "--waga", "2023-05-25=3", "--waga", "2023-05-30=2",
                              "--dodaj-trening", "sud", "-o", "x.yaml"])
     assert a.waga == ["2023-05-25=3", "2023-05-30=2"] and a.dodaj_trening == ["sud"]
-    a = parser().parse_args(["ocen-sezon", "m.pt", "d.yaml", "--progi", "p.json"])
-    assert a.wejscie == 1280 and a.prog == 0.15
-    assert parser().parse_args(["prog-dni", "m.pt", "d.yaml"]).split == "val"

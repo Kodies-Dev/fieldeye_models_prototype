@@ -34,7 +34,6 @@ pomijane, więc można przerwać i uruchomić ponownie.
 
 | Skrypt | Do czego |
 |---|---|
-| `download_datasets.sh` | pobiera prawdziwe zdjęcia z drona z ODMdata (do testów składania) |
 | `generate_field.py` | generuje sztuczne zdjęcia pola z etykietami chwastów YOLO |
 | `make_test_data.py` | starsza, prostsza wersja symulatora (`make dane`) |
 | `simulate_flight.sh` | kopiuje zdjęcia do katalogu w odstępach czasu, jak dron w locie |

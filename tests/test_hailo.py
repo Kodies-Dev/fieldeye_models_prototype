@@ -6,9 +6,8 @@ Po co: akcelerator Hailo-8 jest tylko na Raspberry Pi, a wiekszosc logiki wokol 
 ocena AP50) da sie sprawdzic na zwyklym komputerze z atrapami.
 
 Testowane: mission/detector.py (letterbox, nms_hailo_na_detekcje, HailoDetector,
-           zbuduj_detektor), models/evaluation.py (ap50, ocen_detektor),
+           zbuduj_z_plikow), models/evaluation.py (ap50, ocen_detektor),
            models/export.py (przygotuj_kalibracje), models/cli.py (parser),
-           mission/config.py (MissionConfig + configs/*.yaml),
            skladnia scripts/final_model.sh i scripts/check_hef.sh.
 
     python -m pytest tests/test_hailo.py -q
@@ -195,10 +194,10 @@ def test_detektor_hailo_bez_hailort(monkeypatch, tmp_path):
         HailoDetector(tmp_path / "m.hef")
 
 
-def test_zbuduj_detektor_wybiera_hailo_dla_hef(monkeypatch):
-    """Model z rozszerzeniem .hef (tez .HEF) -> HailoDetector, rowniez z kafelkowaniem.
+def test_zbuduj_z_plikow_wybiera_hailo_dla_hef(monkeypatch):
+    """Model z rozszerzeniem .hef (tez .HEF) -> HailoDetector, rowniez z TTA.
 
-    Po co: na Pi ten sam kod misji ma sam wybrac Hailo po rozszerzeniu pliku modelu.
+    Po co: na Pi binarka i check_hef.sh maja same wybrac Hailo po rozszerzeniu pliku modelu.
 
     Argumenty:
         monkeypatch - fixture pytest: podmienia HailoDetector na atrape
@@ -215,17 +214,13 @@ def test_zbuduj_detektor_wybiera_hailo_dla_hef(monkeypatch):
         """Atrapa HailoDetector - tylko zapamietuje model i prog."""
 
         def __init__(self, model, prog):
-            """Argumenty: model - sciezka modelu, prog - prog pewnosci. Uzywana w: zbuduj_detektor()."""
+            """Argumenty: model - sciezka modelu, prog - prog pewnosci. Uzywana w: _detektor_z_pliku()."""
             self.model, self.prog, self.nazwa = model, prog, "atrapa-hailo"
     monkeypatch.setattr(dm, "HailoDetector", _FakeHailo)
 
-    class Cfg:
-        model, prog_pewnosci, wejscie_sieci = "model.HEF", 0.15, 640
-        kafelkowanie, kafelek, zakladka = False, 896, 0.15
-    d = dm.zbuduj_detektor(Cfg)
+    d = dm.zbuduj_z_plikow("model.HEF", prog=0.15)
     assert isinstance(d, _FakeHailo) and d.prog == 0.15
-    Cfg.kafelkowanie = True
-    assert isinstance(dm.zbuduj_detektor(Cfg).detektor, _FakeHailo)   # kafelkowanie dziala tez z Hailo
+    assert isinstance(dm.zbuduj_z_plikow("model.hef", tta=True).detektor, _FakeHailo)   # TTA tez z Hailo
 
 
 # ---------------------------------------------------------------- ocena dowolnego detektora
@@ -371,7 +366,7 @@ def test_cli_ocen_detektor_i_kalibracja():
     """
     from models.cli import parser
     a = parser().parse_args(["ocen-detektor", "m.hef", "d.yaml", "--prog", "0.15"])
-    assert a.model == ["m.hef"] and a.split == "test" and a.wejscie == 1280
+    assert a.model == "m.hef" and a.split == "test" and a.wejscie == 1280
     a = parser().parse_args(["kalibracja", "obrazy", "--rozmiar", "640"])
     assert a.rozmiar == 640
 
@@ -400,30 +395,7 @@ def test_kalibracja_w_rozmiarze_wejscia(tmp_path):
     assert len(Path(lista).read_text().split()) == 3
 
 
-# ---------------------------------------------------------------- konfiguracje i skrypty
-
-def test_konfiguracje_misji_i_domyslne():
-    """Konfiguracje misji: domyslne (prog 0.15, wejscie 1280), wersja .pt i wersja .hef.
-
-    Po co: configs/mission_wg_sudars.yaml i mission_hailo.yaml maja wskazywac model koncowy
-           z tymi samymi ustawieniami co ocena.
-
-    Argumenty:
-        brak
-
-    Zwraca:
-        nic - pytest sprawdza asserty
-
-    Uzywana w:
-        pytest (python -m pytest tests)
-    """
-    from mission.config import MissionConfig
-    k = MissionConfig()
-    assert k.detekcja.prog_pewnosci == 0.15 and k.detekcja.wejscie_sieci == 1280
-    pt = MissionConfig.wczytaj(ROOT / "configs" / "mission_wg_sudars.yaml")
-    assert pt.detekcja.model.endswith(".pt") and pt.detekcja.wejscie_sieci == 1280
-    hef = MissionConfig.wczytaj(ROOT / "configs" / "mission_hailo.yaml")
-    assert hef.detekcja.model.endswith(".hef") and hef.detekcja.prog_pewnosci == 0.15
+# ---------------------------------------------------------------- skrypty
 
 
 @pytest.mark.parametrize("skrypt", ["final_model.sh", "check_hef.sh"])

@@ -1,23 +1,8 @@
-"""mission - pelny przebieg lotu: detekcja i mapowanie w locie, mozaika po wyladowaniu.
+"""mission - detekcja chwastow w locie i mapa oprysku.
 
-Podmoduly sa importowane dopiero przy pierwszym uzyciu (PEP 562). Dzieki temu
-`fieldeye-detect` nie wczytuje geolokalizacji (pyproj), mozaiki i reszty misji,
-a binarka zbudowana z niego zawiera tylko to, czego potrzebuje.
+    detect_cli.py  - program fieldeye-detect (binarka na Raspberry Pi): nowe zdjecia -> detekcja -> mapa
+    spray_map.py   - telemetria GeoJSON obok kazdego zdjecia -> wspolrzedne chwastow -> mapa oprysku
+    drone_sim.py   - symulowany dron: zdjecia + telemetria w tym samym formacie co prawdziwy dron
+    detector.py    - detektory (.pt / .onnx / .hef, kafelki, TTA) - wspolne z app.py i models/
+    sim_flight.py  - pomocnicze funkcje symulowanego lotu w zakladce 4 app.py
 """
-
-import importlib
-
-__all__ = ["MissionConfig", "zbuduj_detektor", "geo", "in_flight", "post_flight", "telemetry"]
-_PODMODULY = {"geo", "in_flight", "post_flight", "telemetry"}
-
-
-def __getattr__(nazwa):
-    if nazwa in _PODMODULY:
-        return importlib.import_module(f".{nazwa}", __name__)
-    if nazwa == "MissionConfig":
-        from .config import MissionConfig
-        return MissionConfig
-    if nazwa == "zbuduj_detektor":
-        from .detector import zbuduj_detektor
-        return zbuduj_detektor
-    raise AttributeError(f"module {__name__!r} has no attribute {nazwa!r}")

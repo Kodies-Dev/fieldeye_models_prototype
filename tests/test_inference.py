@@ -1,11 +1,11 @@
-"""Testy popraw bez treningu: ensemble (WBF), TTA z odbiciem, niski prog z glosowaniem.
+"""Testy detektorow bez prawdziwego modelu: IoU, TTA z odbiciem (WBF), kafelki, atrapa.
 
-Po co: to sposoby na lepsza wykrywalnosc bez nowego treningu. Model koncowy dziala
-z TTA (FlipTTADetector) - testy pilnuja, ze wykrycia z odbitego obrazu wracaja na
-swoje miejsce, a laczenie ramek (WBF) dobrze usrednia pewnosc.
+Po co: model koncowy dziala z TTA (FlipTTADetector) - testy pilnuja, ze wykrycia
+z odbitego obrazu wracaja na swoje miejsce, a laczenie ramek (WBF) dobrze usrednia
+pewnosc. Kafelki (TiledDetector) musza oddac ramki we wspolrzednych calego zdjecia.
 
-Testowane: mission/detector.py (polacz_wbf, EnsembleDetector, FlipTTADetector,
-           zbuduj_z_plikow), mission/fusion.py (polacz), parsery models/cli.py i mission/cli.py.
+Testowane: mission/detector.py (iou_ramek, polacz_wbf, FlipTTADetector, TiledDetector,
+           DummyDetector, zbuduj_z_plikow), parser models/cli.py (ocen-detektor).
 
     python -m pytest tests/test_inference.py -q
 """
@@ -19,9 +19,8 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from mission.detector import (Detection, EnsembleDetector, FlipTTADetector,  # noqa: E402
-                              polacz_wbf)
-from mission.fusion import polacz  # noqa: E402
+from mission.detector import (Detection, DummyDetector, FlipTTADetector,  # noqa: E402
+                              TiledDetector, iou_ramek, polacz_wbf)
 
 
 def D(x0, y0, x1, y1, c):
@@ -106,7 +105,7 @@ class _Staly:
     """Atrapa detektora: zawsze zwraca te same ramki.
 
     Uzywana w:
-        test_ensemble_dwoch_modeli(), test_zbuduj_z_plikow()
+        test_zbuduj_z_plikow(), testy kafelkow
     """
 
     def __init__(self, ramki, nazwa="m"):
@@ -116,26 +115,6 @@ class _Staly:
     def wykryj(self, img):
         """Argumenty: img - obraz (ignorowany). Zwraca: lista Detection z self.ramki."""
         return [D(*r) for r in self.ramki]
-
-
-def test_ensemble_dwoch_modeli():
-    """Ensemble 2 modeli: ta sama ramka laczona w jedna, pewnosc srednia, nazwa "Ensemble(a + b)".
-
-    Po co: sprawdza EnsembleDetector bez prawdziwych modeli.
-
-    Argumenty:
-        brak
-
-    Zwraca:
-        nic - pytest sprawdza asserty
-
-    Uzywana w:
-        pytest (python -m pytest tests)
-    """
-    e = EnsembleDetector([_Staly([(10, 10, 20, 20, 0.6)], "a"), _Staly([(10, 10, 20, 20, 0.2)], "b")])
-    w = e.wykryj(np.zeros((50, 50, 3), np.uint8))
-    assert len(w) == 1 and w[0].pewnosc == pytest.approx(0.4)
-    assert e.nazwa == "Ensemble(a + b)"
 
 
 class _Magenta:
@@ -176,32 +155,8 @@ def test_tta_odbicie_wraca_na_to_samo_miejsce():
     assert d.pewnosc == pytest.approx(0.5)                       # znaleziony w kazdym przebiegu
 
 
-def test_niski_prog_z_glosowaniem():
-    """Slabe wykrycia (ponizej 0.15) przechodza tylko, gdy widac je na 2 kadrach.
-
-    Po co: laczenie wykryc z wielu zdjec w locie (fusion.polacz) - niski prog z glosowaniem
-           lapie male chwasty bez zalewu falszywek.
-
-    Argumenty:
-        brak
-
-    Zwraca:
-        nic - pytest sprawdza asserty
-
-    Uzywana w:
-        pytest (python -m pytest tests)
-    """
-    dwa_slabe = [(10, 10, 20, 20, 0.07, 0), (10, 10, 20, 20, 0.06, 1)]
-    assert len(polacz(dwa_slabe, prog=0.15, prog_niski=0.05)) == 1   # 2 kadry -> przyjety
-    assert polacz(dwa_slabe, prog=0.15) == []                        # noisy-OR 0,13 < 0,15
-    jedno_slabe = [(10, 10, 20, 20, 0.12, 0)]
-    assert polacz(jedno_slabe, prog=0.15, prog_niski=0.05) == []     # 1 kadr -> odpada
-    silne = [(10, 10, 20, 20, 0.5, 0)]
-    assert len(polacz(silne, prog=0.15, prog_niski=0.05)) == 1       # silne jak zwykle
-
-
-def test_komendy_przyjmuja_kilka_modeli_i_tta():
-    """ocen-detektor i symulacja przyjmuja kilka modeli (ensemble) i opcje --tta.
+def test_ocen_detektor_przyjmuje_model_i_tta():
+    """ocen-detektor: jeden plik modelu, data.yaml i opcja --tta.
 
     Po co: pilnuje opcji, ktorych uzywa final_model.sh (ocen-detektor ... --tta).
 
@@ -214,18 +169,15 @@ def test_komendy_przyjmuja_kilka_modeli_i_tta():
     Uzywana w:
         pytest (python -m pytest tests)
     """
-    from mission.cli import parser as mp
     from models.cli import parser
-    a = parser().parse_args(["ocen-detektor", "a.pt", "b.pt", "d.yaml", "--tta"])
-    assert a.model == ["a.pt", "b.pt"] and a.dane == "d.yaml" and a.tta
-    b = mp().parse_args(["symulacja", "--model", "a.pt", "b.pt", "--tta"])
-    assert b.model == ["a.pt", "b.pt"] and b.tta
+    a = parser().parse_args(["ocen-detektor", "a.pt", "d.yaml", "--tta"])
+    assert a.model == "a.pt" and a.dane == "d.yaml" and a.tta
 
 
 def test_zbuduj_z_plikow(monkeypatch):
-    """zbuduj_z_plikow: kilka modeli -> Ensemble, tta=True -> FlipTTA, jeden -> sam model.
+    """zbuduj_z_plikow: tta=True -> FlipTTA, bez TTA -> sam model.
 
-    Po co: ta funkcja buduje detektor dla ocen-detektor i aplikacji - musi wybrac dobry typ.
+    Po co: ta funkcja buduje detektor dla ocen-detektor i binarki - musi wybrac dobry typ.
 
     Argumenty:
         monkeypatch - fixture pytest: podmienia YoloDetector na atrape _Staly
@@ -238,6 +190,89 @@ def test_zbuduj_z_plikow(monkeypatch):
     """
     from mission import detector as dm
     monkeypatch.setattr(dm, "YoloDetector", lambda m, *a, **k: _Staly([], str(m)))
-    assert isinstance(dm.zbuduj_z_plikow(["a.pt", "b.pt"]), EnsembleDetector)
     assert isinstance(dm.zbuduj_z_plikow("a.pt", tta=True), FlipTTADetector)
     assert dm.zbuduj_z_plikow("a.pt").nazwa == "a.pt"
+
+
+def test_iou_ramek():
+    """IoU: identyczne ramki 1, rozlaczne 0, polowa pokrycia 1/3.
+
+    Po co: jedno IoU liczy ocene modelu, NMS kafelkow, WBF i scalanie na mozaice.
+
+    Argumenty:
+        brak
+
+    Zwraca:
+        nic - pytest sprawdza asserty
+
+    Uzywana w:
+        pytest (python -m pytest tests)
+    """
+    assert iou_ramek((0, 0, 10, 10), (0, 0, 10, 10)) == pytest.approx(1.0)
+    assert iou_ramek((0, 0, 10, 10), (20, 20, 30, 30)) == 0.0
+    assert iou_ramek((0, 0, 10, 10), (5, 0, 15, 10)) == pytest.approx(1 / 3)
+    assert iou_ramek((0, 0, 10, 10, 0.9), (0, 0, 10, 10)) == pytest.approx(1.0)   # pewnosc pomijana
+
+
+def test_atrapa_zwraca_ramki_w_obrazie():
+    """Atrapa (plamy zieleni) zwraca ramki lezace w obrazie i z klasa "atrapa".
+
+    Po co: atrapa uruchamia caly potok bez modelu - jej wynik nie moze udawac chwastu.
+
+    Argumenty:
+        brak
+
+    Zwraca:
+        nic - pytest sprawdza asserty
+
+    Uzywana w:
+        pytest (python -m pytest tests)
+    """
+    img = np.full((300, 400, 3), (60, 70, 90), np.uint8)
+    cv2.circle(img, (200, 150), 20, (60, 240, 110), -1)
+    det = DummyDetector().wykryj(img)
+    assert len(det) >= 1
+    for d in det:
+        assert 0 <= d.x0 < d.x1 <= 400 and 0 <= d.y0 < d.y1 <= 300
+        assert d.klasa == "atrapa"
+
+
+def test_kafelki_przeliczaja_wspolrzedne_na_caly_kadr():
+    """Detekcja z kafelka trafia we wlasciwe miejsce calego zdjecia.
+
+    Po co: binarka i zakladka 4 tna duze zdjecie na kafelki - zle przesuniecie = zle namiary.
+
+    Argumenty:
+        brak
+
+    Zwraca:
+        nic - pytest sprawdza asserty
+
+    Uzywana w:
+        pytest (python -m pytest tests)
+    """
+    d = TiledDetector(_Staly([(10, 10, 30, 30, 0.9)]), kafelek=100, zakladka=0.0)
+    wynik = d.wykryj(np.zeros((300, 300, 3), np.uint8))
+    assert len(wynik) == 9                        # siatka 3x3 kafelkow
+    rogi = {(int(r.x0), int(r.y0)) for r in wynik}
+    assert (10, 10) in rogi and (110, 110) in rogi and (210, 210) in rogi
+
+
+def test_kafelki_usuwaja_duplikaty_z_zakladki():
+    """Te same ramki z zachodzacych kafelkow sa scalane (NMS), maly kadr idzie w calosci.
+
+    Po co: bez scalania jeden chwast z zakladki bylby liczony kilka razy.
+
+    Argumenty:
+        brak
+
+    Zwraca:
+        nic - pytest sprawdza asserty
+
+    Uzywana w:
+        pytest (python -m pytest tests)
+    """
+    d = TiledDetector(_Staly([(0, 0, 100, 100, 0.9)]), kafelek=100, zakladka=0.5, prog_iou=0.3)
+    assert len(d.wykryj(np.zeros((150, 150, 3), np.uint8))) < 4
+    maly = TiledDetector(_Staly([(1, 1, 5, 5, 0.5)]), kafelek=896)
+    assert len(maly.wykryj(np.zeros((640, 640, 3), np.uint8))) == 1

@@ -50,9 +50,20 @@ _E2 = 6.69437999014e-3
 
 
 class UkladLokalny:
-    """(lat, lon) <-> (east, north) w metrach wzgledem punktu odniesienia."""
+    """(lat, lon) <-> (east, north) w metrach wzgledem punktu odniesienia.
+
+    Po co: lekka wersja bez pyproj (binarka) - styczna do elipsoidy WGS84 w punkcie odniesienia.
+
+    Uzywana w:
+        MapaOprysku (ten plik), porownaj() (ten plik), mission/drone_sim.py
+    """
 
     def __init__(self, lat0, lon0):
+        """Liczy, ile metrow ma stopien szerokosci i dlugosci w punkcie odniesienia.
+
+        Argumenty:
+            lat0, lon0 - punkt odniesienia (np. pierwsze zdjecie)
+        """
         self.lat0, self.lon0 = lat0, lon0
         f = math.radians(lat0)
         w = 1 - _E2 * math.sin(f) ** 2
@@ -60,9 +71,11 @@ class UkladLokalny:
         self._n = _A / math.sqrt(w) * math.cos(f) * math.pi / 180     # metry na stopien dlugosci
 
     def na_metry(self, lat, lon):
+        """(lat, lon) -> (east, north) w metrach od punktu odniesienia."""
         return (lon - self.lon0) * self._n, (lat - self.lat0) * self._m
 
     def na_stopnie(self, east, north):
+        """(east, north) w metrach -> (lat, lon)."""
         return self.lat0 + north / self._m, self.lon0 + east / self._n
 
 
@@ -70,7 +83,19 @@ def piksel_na_metry(px, py, szer_px, wys_px, gsd_m, kurs_st):
     """Piksel zdjecia -> (east, north) w metrach od srodka zdjecia.
 
     Obraz: x w prawo, y w dol; przod drona to gora obrazu. Kurs od polnocy zgodnie
-    z zegarem. Ta sama konwencja co mission.geo.piksel_na_metry (bez pyproj).
+    z zegarem.
+
+    Argumenty:
+        px, py          - piksel (srodek ramki chwastu)
+        szer_px, wys_px - rozmiar zdjecia
+        gsd_m           - metry na piksel
+        kurs_st         - kurs drona [st.]
+
+    Zwraca:
+        (east, north) [m]
+
+    Uzywana w:
+        MapaOprysku.dodaj_zdjecie() (ten plik)
     """
     dx = (px - szer_px / 2.0) * gsd_m
     dy = (py - wys_px / 2.0) * gsd_m
@@ -79,6 +104,7 @@ def piksel_na_metry(px, py, szer_px, wys_px, gsd_m, kurs_st):
 
 
 def _liczba(v):
+    """Wartosc -> float albo None (puste, brak, nie-liczba)."""
     try:
         return float(v) if v not in (None, "") else None
     except (TypeError, ValueError):
@@ -89,6 +115,17 @@ def czytaj_telemetrie(sciezka, zdjecie=None):
     """Plik telemetrii drona (format z opisu modulu) -> slownik albo None, gdy plik jest nieczytelny.
 
     Bierze punkt z properties.image == nazwa zdjecia, a gdy takiego nie ma - pierwszy punkt.
+
+    Argumenty:
+        sciezka - plik .geojson obok zdjecia
+        zdjecie - nazwa zdjecia albo None
+
+    Zwraca:
+        dict: lon, lat, agl, gsd_mm, kurs, zrodlo_kursu ("heading" / "course" / None),
+        przechylenie, pochylenie, fix, fix_quality, czas, zdjecie, szer_px, wys_px
+
+    Uzywana w:
+        mission/detect_cli.py main()
     """
     try:
         d = json.loads(Path(sciezka).read_text(encoding="utf-8"))
@@ -126,6 +163,15 @@ def blad_telemetrii(tele):
 
     Lapie typowe pomylki: wspolrzedne poza zakresem albo zerowe (brak fixa GPS),
     wysokosc nad poziomem morza zamiast nad polem, skala w zlych jednostkach.
+
+    Argumenty:
+        tele - wynik czytaj_telemetrie()
+
+    Zwraca:
+        str z opisem problemu albo None
+
+    Uzywana w:
+        mission/detect_cli.py main() - zdjecie idzie wtedy bez GPS, z ostrzezeniem
     """
     if not (-90 <= tele["lat"] <= 90 and -180 <= tele["lon"] <= 180):
         return f"wspolrzedne poza zakresem ({tele['lat']}, {tele['lon']}) - zamieniona kolejnosc?"
@@ -146,19 +192,45 @@ def blad_telemetrii(tele):
 
 
 def przechyl_st(tele):
-    """Najwiekszy z katow przechylenia i pochylenia [st.] albo None, gdy telemetria ich nie ma."""
+    """Najwiekszy z katow przechylenia i pochylenia [st.] albo None, gdy telemetria ich nie ma.
+
+    Uzywana w:
+        MapaOprysku.dodaj_zdjecie() (niepewnosc polozenia), mission/detect_cli.py (limit --maks-przechyl)
+    """
     k = [abs(v) for v in (tele.get("przechylenie"), tele.get("pochylenie")) if v is not None]
     return max(k) if k else None
 
 
 def plik_telemetrii(zdjecie):
-    """Telemetria lezaca obok zdjecia: ta sama nazwa z rozszerzeniem .geojson (None, gdy brak)."""
+    """Telemetria lezaca obok zdjecia: ta sama nazwa z rozszerzeniem .geojson (None, gdy brak).
+
+    Argumenty:
+        zdjecie - Path zdjecia, np. "lot/20261109T142859.998Z.jpg"
+
+    Zwraca:
+        Path(".../20261109T142859.998Z.geojson") albo None (brak albo pusty plik)
+
+    Uzywana w:
+        mission/detect_cli.py main()
+    """
     p = Path(zdjecie).with_suffix(".geojson")
     return p if p.is_file() and p.stat().st_size > 0 else None
 
 
 def gsd_m(tele, szer_obrazu_px, kamera=None):
-    """Metry na piksel dla zdjecia: survey.gsd_mm_per_px albo survey.agl_m + model kamery."""
+    """Metry na piksel dla zdjecia: survey.gsd_mm_per_px albo survey.agl_m + model kamery.
+
+    Argumenty:
+        tele           - wynik czytaj_telemetrie()
+        szer_obrazu_px - szerokosc zdjecia
+        kamera         - model kamery (stitchlive/camera.py, np. ARDUCAM_64MP_16MP) albo None
+
+    Zwraca:
+        float [m/px] albo None
+
+    Uzywana w:
+        mission/detect_cli.py main() (skala + dobor kafelka do 1,5 m pola)
+    """
     if tele.get("gsd_mm"):
         return tele["gsd_mm"] / 1000.0
     if tele.get("agl") and kamera is not None:
@@ -167,6 +239,7 @@ def gsd_m(tele, szer_obrazu_px, kamera=None):
 
 
 def _zapisz_atomowo(sciezka, tekst):
+    """Zapis tekstu przez plik tymczasowy i zmiane nazwy - nigdy pol pliku."""
     tmp = sciezka.with_name(f".{sciezka.name}.tmp")
     tmp.write_text(tekst, encoding="utf-8")
     tmp.replace(sciezka)
@@ -178,9 +251,16 @@ class MapaOprysku:
     Ten sam chwast widziany na kilku zachodzacych zdjeciach trafia do jednego
     punktu, gdy wykrycie lezy blizej niz promien_scalania_m od punktu. Polozenie
     punktu to srednia wazona pewnoscia wszystkich jego wykryc.
+
+    Uzywana w:
+        mission/detect_cli.py main() (po kazdym zdjeciu dodaj_zdjecie + zapisz)
     """
 
     def __init__(self, promien_scalania_m=0.10, margines_m=0.05):
+        """Argumenty:
+            promien_scalania_m - wykrycia blizej niz tyle metrow to jeden punkt, np. 0.10
+            margines_m         - dodatek do promienia oprysku wokol chwastu, np. 0.05
+        """
         self.promien = promien_scalania_m
         self.margines = margines_m
         self.uklad = None
@@ -189,7 +269,20 @@ class MapaOprysku:
         self.trasa = []              # (lat, lon, zdjecie, czas)
 
     def dodaj_zdjecie(self, tele, zdjecie, szer, wys, wykrycia, gsd):
-        """wykrycia: [(x0, y0, x1, y1, pewnosc)] w pikselach zdjecia. Zwraca liczbe nowych punktow."""
+        """wykrycia: [(x0, y0, x1, y1, pewnosc)] w pikselach zdjecia. Zwraca liczbe nowych punktow.
+
+        Kazde wykrycie: srodek ramki -> metry (piksel_na_metry) -> stopnie -> scalenie z punktami.
+
+        Argumenty:
+            tele      - telemetria zdjecia (lat, lon, kurs, agl, ...)
+            zdjecie   - nazwa zdjecia
+            szer, wys - rozmiar zdjecia
+            wykrycia  - lista ramek z pewnoscia
+            gsd       - metry na piksel
+
+        Zwraca:
+            int - ile nowych punktow oprysku doszlo
+        """
         if self.uklad is None:
             self.uklad = UkladLokalny(tele["lat"], tele["lon"])
         self.trasa.append((tele["lat"], tele["lon"], zdjecie, tele.get("czas")))
@@ -207,6 +300,11 @@ class MapaOprysku:
         return nowe
 
     def _scal(self, e, n, pw, rozmiar, zdjecie):
+        """Dolacza wykrycie do najblizszego punktu w promieniu albo zaklada nowy punkt.
+
+        Zwraca:
+            1 = nowy punkt, 0 = dolaczone do istniejacego
+        """
         najblizszy, odl = None, self.promien
         for p in self.punkty:
             d = math.hypot(p[1] / p[0] - e, p[2] / p[0] - n)
@@ -221,7 +319,10 @@ class MapaOprysku:
         return 0
 
     def punkty_oprysku(self):
-        """[(id, lat, lon, promien_m, pewnosc_max, liczba_wykryc, liczba_zdjec)]"""
+        """[(id, lat, lon, promien_m, pewnosc_max, liczba_wykryc, liczba_zdjec)]
+
+        Promien = polowa najwiekszego chwastu + margines.
+        """
         out = []
         for i, (w, se, sn, pmax, rozm, n, zdj) in enumerate(self.punkty, 1):
             lat, lon = self.uklad.na_stopnie(se / w, sn / w)
@@ -229,6 +330,11 @@ class MapaOprysku:
         return out
 
     def zapisz(self, katalog):
+        """Zapisuje oprysk.geojson, oprysk.csv, chwasty.geojson i trasa.geojson (atomowo).
+
+        Argumenty:
+            katalog - folder WYNIKI
+        """
         katalog = Path(katalog)
         if self.uklad is None:
             return
@@ -260,8 +366,17 @@ def porownaj(oprysk_geojson, prawda_geojson, promien_m=0.10):
     Zwraca slownik: trafione, pominiete, falszywe, czulosc, precyzja, mediana i 90. centyl
     odleglosci trafionych punktow od prawdziwych chwastow [cm]. Dopasowanie zachlanne
     od najblizszych par, kazdy chwast i kazdy punkt najwyzej raz.
+
+    Argumenty:
+        oprysk_geojson - oprysk.geojson z fieldeye-detect
+        prawda_geojson - prawda.geojson z symulatora drona
+        promien_m      - trafienie, gdy blizej niz tyle metrow, np. 0.10
+
+    Uzywana w:
+        main() (ten plik), scripts/fieldeye_detect_main.py (fieldeye-detect porownaj), tests
     """
     def punkty(p):
+        """Punkty z pliku GeoJSON -> lista (lat, lon)."""
         d = json.loads(Path(p).read_text(encoding="utf-8"))
         return [(c["geometry"]["coordinates"][1], c["geometry"]["coordinates"][0]) for c in d["features"]
                 if (c.get("geometry") or {}).get("type") == "Point"]
@@ -287,6 +402,11 @@ def porownaj(oprysk_geojson, prawda_geojson, promien_m=0.10):
 
 
 def main(argv=None):
+    """Wiersz polecen: python -m mission.spray_map OPRYSK PRAWDA [--promien 0.10] -> wynik porownaj().
+
+    Zwraca:
+        0
+    """
     import argparse
     ap = argparse.ArgumentParser(description="Porownanie punktow oprysku z prawdziwymi chwastami (symulacja).")
     ap.add_argument("oprysk", help="oprysk.geojson z fieldeye-detect")

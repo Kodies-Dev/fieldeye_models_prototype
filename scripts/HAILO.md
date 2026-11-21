@@ -1,135 +1,106 @@
-# Modele FIELDEYE na Hailo-8 (Raspberry Pi 5 + AI HAT+ 26 TOPS)
+# Model końcowy FIELDEYE na Hailo-8 (Raspberry Pi 5 + AI HAT+ 26 TOPS)
 
-Dwa modele, ta sama architektura YOLOv8n, jedna klasa „chwast”:
+| | |
+|---|---|
+| model | `models/weights/fieldeye_final.pt` (YOLOv8n, 1 klasa „chwast”, wejście 1280) |
+| HEF | `fieldeye_final_1280_h8.hef` (5,4 MB, Hailo-8, HailoRT 4.23) — w `model_fin.zip`, nie w gicie |
+| droga | `.pt` → ONNX + zdjęcia kalibracyjne (Mac) → HEF (WSL, Ubuntu 22.04) → uruchomienie (Raspberry Pi) |
 
-| | Model A | Model B |
-|---|---|---|
-| katalog | `modele_wg_sudars` | `modele_wg_sudars_640` |
-| wejście | 1280 | 640 |
-| kompilacja | własna konfiguracja NMS dla 1280 | konfiguracja `yolov8n` z Model Zoo |
-
-Droga: `model.pt` → `model.onnx` (Mac) → `model.hef` (Linux x86) → uruchomienie (Raspberry Pi).
-HEF nie zastępuje `.pt`: trening, ocena i interfejs na Macu dalej używają `.pt`.
+HEF nie zastępuje `.pt`: trening, ocena i symulator na komputerze dalej używają `.pt`.
+Pełny opis z wynikami: dokument „FIELDEYE: model, konwersja do HEF, Raspberry Pi”.
 
 ---
 
 ## 1. Mac: ONNX i zdjęcia kalibracyjne
 
-**Najprościej jednym skryptem**, który robi wszystko z tego kroku, a do tego
-trenuje model B, ocenia oba modele, sprawdza ONNX i pakuje zbiór testowy:
-
 ```bash
-caffeinate -i bash scripts/finish_models.sh
+mkdir -p hailo/final
+python -m models.cli onnx models/weights/fieldeye_final.pt -o hailo/final/fieldeye_final_1280.onnx --wejscie 1280 --opset 11
+
+rm -rf /tmp/kal_zrodlo && mkdir -p /tmp/kal_zrodlo
+cp zbior_lotnicze/dataset/images/train/*.jpg zbior_ewis1_podzial/dataset/images/train/*.jpg /tmp/kal_zrodlo/
+python -m models.cli kalibracja /tmp/kal_zrodlo -o hailo/final/kalibracja_1280 --liczba 128 --rozmiar 1280
+cp scripts/compile_hef.py hailo/final/
+cd hailo/final && zip -r ~/Desktop/hailo_final.zip . && cd ../..
 ```
 
-Ręcznie, krok po kroku:
+- eksport ma wypisać wyjście `(1, 5, 33600)`; stałe wejście i opset 11 zaleca kompilator Hailo,
+- zdjęcia kalibracyjne tylko z części treningowej (WeedsGalore + EWIS1), nigdy z testu.
+
+## 2. WSL: kompilacja do HEF
+
+Kompilator Hailo działa tylko na Linuksie x86: Windows + WSL z Ubuntu 22.04, Python 3.10,
+co najmniej 16 GB pamięci (RAM + wymiana, `.wslconfig`).
+
+| Składnik | Wersja | Uwagi |
+|---|---|---|
+| HailoRT na Raspberry Pi | 4.23.0 | kompilator musi być z tego samego wydania |
+| Hailo Dataflow Compiler | 3.33.0 | `hailo_dataflow_compiler-3.33.0-py3-none-linux_x86_64.whl` |
+| Hailo Model Zoo | 2.17.0 | `hailo_model_zoo-2.17.0-py3-none-any.whl` |
+| nie brać | 3.34.0 / 5.x | dla HailoRT 4.24 / dla Hailo-10 i Hailo-15 |
 
 ```bash
-mkdir -p hailo
-python -m models.cli onnx modele_wg_sudars_640/model.pt -o hailo/wg_sudars_640.onnx  --wejscie 640  --opset 11
-python -m models.cli onnx modele_wg_sudars/model.pt     -o hailo/wg_sudars_1280.onnx --wejscie 1280 --opset 11
+sudo apt install -y python3.10-venv python3-dev python3-tk graphviz graphviz-dev git build-essential
+python3 -m venv ~/hailo_venv && source ~/hailo_venv/bin/activate
+pip install --upgrade pip wheel
+pip install hailo_dataflow_compiler-3.33.0-py3-none-linux_x86_64.whl hailo_model_zoo-2.17.0-py3-none-any.whl
 
-python -m models.cli kalibracja zbior_lotnicze/dataset/images/train -o hailo/kalibracja_640  --liczba 104 --rozmiar 640
-python -m models.cli kalibracja zbior_lotnicze/dataset/images/train -o hailo/kalibracja_1280 --liczba 104 --rozmiar 1280
+# pakiet Model Zoo nie zawiera konfiguracji NMS - dograć z gałęzi v2.17
+git clone --depth 1 --branch v2.17 https://github.com/hailo-ai/hailo_model_zoo.git ~/hmz_src
+cp -r ~/hmz_src/hailo_model_zoo/cfg/postprocess_config ~/hailo_venv/lib/python3.10/site-packages/hailo_model_zoo/cfg/
+
+# kompilacja (po rozpakowaniu hailo_final.zip do ~/fieldeye/final)
+cd ~/fieldeye/final
+python compile_hef.py fieldeye_final_1280.onnx kalibracja_1280 -o fieldeye_final_1280_h8.hef --rozmiar 1280 2>&1 | tee kompilacja_final.log
 ```
 
-- opset 11, stałe wejście i uproszczony graf to ustawienia zalecane dla kompilatora Hailo,
-- `--rozmiar` wpisuje zdjęcia w kwadrat wejścia sieci tak samo, jak robi to `HailoDetector`,
-- zdjęcia kalibracyjne to tylko kafelki **treningowe** WeedsGalore (104), nigdy test.
-  Na wiosnę trzeba je zastąpić zdjęciami z własnego pola i własnej kamery.
+**Dlaczego `compile_hef.py`, a nie samo `hailomz compile`:** konfiguracja NMS z Model Zoo ma obraz
+640, próg 0,2 i 100 ramek na klasę. Skrypt bierze z Model Zoo skrypt modelu YOLOv8n i wzór NMS,
+ustawia obraz 1280, 1 klasę, próg 0,05 i do 300 ramek, sześć końcowych warstw Conv głowicy
+(`/model.22/cv2.x`, `cv3.x`) i nazwę sieci `yolov8n` (do niej odwołuje się konfiguracja NMS).
 
-Katalog `hailo/` skopiuj na komputer z Linuksem.
+Model końcowy mieści się w jednym kontekście akceleratora (47% obliczeń, 28% pamięci).
+Bez karty graficznej i przy mniej niż 1024 zdjęciach kalibracyjnych kompilator schodzi
+do poziomu optymalizacji 0 (64 zdjęcia, podstawowa kwantyzacja) — działa, ale może tracić
+więcej dokładności niż przy pełnej optymalizacji (karta graficzna w WSL i ok. 1024 zdjęcia).
 
-## 2. Linux x86: kompilacja do HEF
-
-Potrzebny jest **Hailo AI Software Suite** (docker) w wersji dla **Hailo-8/8L**
-(Dataflow Compiler 3.x + Model Zoo 2.x), z hailo.ai → Developer Zone. Wersja dla
-Hailo-10/15 nie przyjmie `--hw-arch hailo8`. Kompilator nie działa na Macu.
-
-### 2a. Konfiguracja NMS
-
-Gotowa konfiguracja zakłada wejście 640 i najwyżej 100 wykryć na klasę. Na naszych
-kafelkach bywa ponad 100 chwastów, więc limit trzeba podnieść w **obu** modelach,
-a dla modelu A zmienić też rozmiar obrazu.
-
-```bash
-# w kontenerze; ścieżki mogą się różnić między wersjami Model Zoo
-find / -name "yolov8n_nms_config.json" 2>/dev/null
-find / -name "yolov8n.alls" 2>/dev/null
-
-cp <...>/yolov8n_nms_config.json nms_640.json
-cp <...>/yolov8n_nms_config.json nms_1280.json
-# w obu plikach:   "max_proposals_per_class": 300
-# w nms_1280.json:  "image_dims": [1280, 1280]
-
-cp <...>/yolov8n.alls yolov8n_640.alls
-cp <...>/yolov8n.alls yolov8n_1280.alls
-# w każdym .alls w linii nms_postprocess(...) podmień ścieżkę na nms_640.json / nms_1280.json
-```
-
-### 2b. Kompilacja
-
-```bash
-hailomz compile yolov8n --ckpt hailo/wg_sudars_640.onnx  --hw-arch hailo8 \
-        --calib-path hailo/kalibracja_640  --classes 1 --model-script yolov8n_640.alls
-hailomz compile yolov8n --ckpt hailo/wg_sudars_1280.onnx --hw-arch hailo8 \
-        --calib-path hailo/kalibracja_1280 --classes 1 --model-script yolov8n_1280.alls
-```
-
-Wynik: `yolov8n.hef` po każdej kompilacji. Przemianuj od razu na
-`wg_sudars_640.hef` i `wg_sudars_1280.hef`, żeby się nie pomyliły.
-
-**Jeśli `parse` zgłosi błąd węzłów:** Ultralytics 8.4 może nazywać warstwy inaczej,
-niż spodziewa się konfiguracja. Otwórz ONNX w https://netron.app, znajdź sześć
-ostatnich splotów przed łączeniem wyjść (po dwa na każdą z trzech skal) i podaj je
-w `--end-node-names`.
+| Objaw | Rozwiązanie |
+|---|---|
+| `Temporary failure resolving` | ręczny DNS w `/etc/resolv.conf` (`nameserver 8.8.8.8`) |
+| `No such file ... yolov8n_nms_config.json` | dograć `postprocess_config` z gałęzi v2.17 |
+| `The layer named yolov8n/conv41 doesn't exist` | nazwa sieci `yolov8n` (jest w `compile_hef.py`) |
+| `invalid choice: 'hailo8'` | Model Zoo 2.17 zamiast 5.x |
+| `Unsupported hef version` (na Pi) | kompilator z wydania HailoRT na Pi |
 
 ## 3. Raspberry Pi 5 z AI HAT+: sprawdzenie
 
-**Najprościej jednym skryptem** (po skopiowaniu `stitch-live` z katalogiem `hailo/`
-i skompilowanymi plikami `.hef`):
+`fieldeye_final_1280_h8.hef` w katalogu repozytorium, opcjonalnie zbiór `zbior_ewis1_podzial`
+(z paczki danych) albo paczka testowa `test_ewis1/`:
 
 ```bash
-bash scripts/check_hef.sh
+bash scripts/check_hef.sh                                                     # domyślnie test_ewis1/data.yaml
+bash scripts/check_hef.sh fieldeye_final_1280_h8.hef zbior_ewis1_podzial/dataset/data.yaml
 ```
 
-Ręcznie:
+Skrypt sprawdza akcelerator (`hailortcli fw-control identify`), plik (`parse-hef`: wejście
+1280×1280×3, wyjście z NMS), szybkość (`hailortcli run`) i dokładność na teście EWIS1 bez TTA
+i z TTA, z porównaniem z `.pt`:
+
+| | AP50 `.pt` | czułość | precyzja |
+|---|---|---|---|
+| bez TTA | 0,812 | 79,1% | 81,1% |
+| z TTA | 0,817 | 78,4% | 84,3% |
+
+Różnica to strata z kwantyzacji i kompilacji: do ok. 2 pp „dobrze”, do 5 pp „akceptowalnie”,
+więcej — sprawdzić kompilację i zdjęcia kalibracyjne. NMS na układzie odrzuca wykrycia poniżej
+0,05, więc AP50 HEF-a może wyjść ok. 0,01 niżej tylko z tego powodu.
+
+## 4. Użycie w locie
 
 ```bash
-sudo apt install hailo-all          # HailoRT i pakiet hailo_platform
-hailortcli fw-control identify      # czy akcelerator jest widoczny
-hailortcli parse-hef wg_sudars_640.hef
+./fieldeye-detect ZDJECIA WYNIKI fieldeye_final_1280_h8.hef                    # binarka
+python3 -m mission.detect_cli ZDJECIA WYNIKI fieldeye_final_1280_h8.hef        # ze źródeł
 ```
 
-`parse-hef` powinien pokazać wejście 640×640×3 (albo 1280×1280×3) i wyjście
-z NMS (`yolov8_nms_postprocess`).
-
-### Ocena tym samym kodem co na Macu
-
-Na Raspberry Pi potrzebny jest katalog `stitch-live` (bez ultralytics) i zbiór
-testowy `zbior_lotnicze/dataset` (26 kafelków).
-
-```bash
-# Raspberry Pi
-python -m models.cli ocen-detektor wg_sudars_640.hef  zbior_lotnicze/dataset/data.yaml --prog 0.15 -o hef_640.json
-python -m models.cli ocen-detektor wg_sudars_1280.hef zbior_lotnicze/dataset/data.yaml --prog 0.15 -o hef_1280.json
-
-# Mac - te same liczby dla oryginałów
-python -m models.cli ocen-detektor modele_wg_sudars_640/model.pt zbior_lotnicze/dataset/data.yaml --wejscie 640  --prog 0.15
-python -m models.cli ocen-detektor modele_wg_sudars/model.pt     zbior_lotnicze/dataset/data.yaml --wejscie 1280 --prog 0.15
-```
-
-Różnica AP50 i czułości między `.pt` a `.hef` to strata z kwantyzacji i kompilacji.
-Kilka punktów procentowych jest normalne. Gdy HEF prawie nic nie wykrywa, a `.pt`
-wykrywa, sprawdź po kolei: liczbę klas (`--classes 1`), ścieżkę NMS w `.alls`,
-format zdjęć kalibracyjnych.
-
-## 4. Użycie w misji
-
-Gotowa konfiguracja jest w `configs/mission_hailo.yaml`:
-
-```bash
-python3 -m mission.cli pelna zdjecia/ -o wynik_misji/ --config configs/mission_hailo.yaml
-```
-
-Przy `.hef` wejście sieci jest wbudowane w plik, więc `wejscie_sieci` nie ma znaczenia.
+Domyślnie próg 0,15 i kafelek 950 px (1,5 m pola z 5 m). Przy `.hef` wejście sieci jest
+wbudowane w plik. Pełny opis (telemetria, mapa oprysku, paczka na Pi): `docs/fieldeye-detect.md`.

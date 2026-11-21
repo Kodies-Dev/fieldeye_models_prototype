@@ -12,10 +12,6 @@ numpy>=1.24,<3.0
 streamlit>=1.40
 Pillow>=10.0
 
-# --- misja: georeferencja i telemetria ---
-pyproj>=3.5       # uklady wspolrzednych (WGS84 <-> UTM)
-piexif>=1.1.3     # odczyt GPS z EXIF
-
 # --- normalizacja i modele: pliki konfiguracyjne ---
 PyYAML>=6.0       # taxonomy.yaml, data.yaml
 

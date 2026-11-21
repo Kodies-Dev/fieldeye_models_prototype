@@ -51,16 +51,11 @@ def test_model_obok_binarki(tmp_path, monkeypatch):
     assert D.domyslny_model() == tmp_path / "fieldeye_final_1280_h8.hef"
 
 
-def test_detect_cli_nie_wczytuje_reszty_misji():
+def test_detect_cli_nie_wczytuje_ciezkich_bibliotek():
     kod = ("import sys; import mission.detect_cli; "
-           "print(','.join(m for m in ('pyproj', 'mission.geo', 'mission.post_flight', 'torch') if m in sys.modules))")
+           "print(','.join(m for m in ('torch', 'ultralytics', 'streamlit') if m in sys.modules))")
     r = subprocess.run([sys.executable, "-c", kod], cwd=ROOT, capture_output=True, text=True)
     assert r.returncode == 0 and r.stdout.strip() == "", r.stdout + r.stderr
-
-
-def test_mission_dalej_daje_dostep_do_podmodulow():
-    import mission
-    assert mission.geo.__name__ == "mission.geo" and mission.MissionConfig.__name__ == "MissionConfig"
 
 
 def test_skrypt_budujacy_bez_bledow_skladni():

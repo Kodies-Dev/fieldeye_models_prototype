@@ -10,12 +10,13 @@ decyzji są w `README.md` — ten plik opisuje, jak to zostało zrealizowane.
 ```bash
 python -m normalization.build \
     --weedsgalore dane/weedsgalore-dataset \
-    --cofly       dane/CoFly-WeedDB \
     --sudars      dane/sudars/dataset \
-    --weedmaize   dane/weedmaize \
+    --ewis1       dane/ewis1 --skala ewis1=0.47 \
     --wlasne      dane/moje_misje \
-    -o zbior --tryb-klas binarnie
+    -o zbior --tryb-klas chwasty
 ```
+
+Model końcowy buduje każdy zbiór osobno (krok 1 w `scripts/final_model.sh`).
 
 Można podać dowolny podzbiór źródeł — brakujące są pomijane z ostrzeżeniem.
 
@@ -92,7 +93,7 @@ class Record:
     obraz: str       # ścieżka (WeedsGalore: prefiks bez _R.png)
     szer: int
     wys: int
-    zrodlo: str      # weedsgalore / cofly / sudars / weedmaize / wlasne
+    zrodlo: str      # weedsgalore / sudars / ewis1 / wlasne
     grupa: str       # klucz podziału — dzień lotu, misja, katalog
     domena: str      # uav / ground — do treningu etapowego
     wyczerpujace: bool   # czy zaznaczono WSZYSTKIE chwasty w kadrze
@@ -152,9 +153,8 @@ i tak nigdy ich nie zobaczy na polu.
 | Zbiór | Format wejściowy | Na co trzeba uważać |
 |---|---|---|
 | WeedsGalore | kanały `_R/_G/_B/_NIR/_RE` osobno, maski `semantics/` i `instances/` | ramki z maski **instancji**, nie semantycznej |
-| CoFly | maski kolorowe `labels/` albo liczbowe `labels_1d/` | 165 z 366 zdjęć nie ma chwastów — to przykłady negatywne |
 | Sudars | Pascal VOC | skróty (`GP`) albo pełne nazwy łacińskie |
-| WeedMaize | Pascal VOC | kody EPPO z fazą (`ZEAMX_V1`) |
+| EWIS1 | Pascal VOC + maski | w XML zamienione wymiary, czasem ramki dla obróconego zdjęcia, inna nazwa pliku |
 | własne | YOLO `.txt` albo Pascal VOC | nazwy klas z `classes.txt` lub `data.yaml` obok |
 
 **Maska instancji zamiast semantycznej:** w masce semantycznej dwie stykające się
@@ -178,7 +178,7 @@ Dwa obrazy uznawane są za duplikaty, gdy różnią się na co najwyżej `--prog
 bitach (domyślnie 5). Przy konflikcie zostaje zbiór o wyższym priorytecie:
 
 ```
-wlasne > weedsgalore > cofly > sudars > weedmaize
+wlasne > weedsgalore > sudars > (reszta, np. ewis1)
 ```
 
 Odrzucone pary trafiają do `duplikaty.json` — można sprawdzić, czy to faktycznie

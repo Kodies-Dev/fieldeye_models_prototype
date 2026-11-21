@@ -21,12 +21,9 @@ def test_uklad_lokalny_skala_i_powrot():
     assert abs(e - 100) < 1e-6 and abs(n - 100) < 1e-6
 
 
-def test_piksel_na_metry_zgodny_z_modulem_geo():
-    pytest.importorskip("pyproj")
-    from mission import geo
-    for kurs in (0, 37.5, 90, 180, 271):
-        assert S.piksel_na_metry(10, 500, 600, 600, 0.0025, kurs) == pytest.approx(
-            geo.piksel_na_metry(10, 500, 600, 600, 0.0025, kurs))
+def test_piksel_na_metry_kierunki():
+    e, n = S.piksel_na_metry(300, 0, 600, 600, 0.01, 0)         # gora zdjecia przy kursie 0 = polnoc
+    assert e == pytest.approx(0.0, abs=1e-9) and n == pytest.approx(3.0)
     e, n = S.piksel_na_metry(300, 0, 600, 600, 0.01, 90)        # gora zdjecia przy kursie 90 = wschod
     assert e == pytest.approx(3.0) and n == pytest.approx(0.0, abs=1e-9)
 

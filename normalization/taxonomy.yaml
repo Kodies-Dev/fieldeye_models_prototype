@@ -187,15 +187,3 @@ maski:
     3: echinochloa_crus_galli
     4: galinsoga_parviflora
     5: chwast_inny
-  # PhenoBench (semantics): 1 burak, 2 chwast, 3/4 to samo, ale widoczne w mniej niz 50%
-  # (przy krawedzi zdjecia) - zostaja, bo widoczna czesc to nadal chwast.
-  phenobench:
-    1: beta_vulgaris
-    2: chwast_inny
-    3: beta_vulgaris
-    4: chwast_inny
-  # CoFly: labels_1d, wartosci wg README zbioru
-  cofly:
-    1: sorghum_halepense
-    2: portulaca_oleracea
-    3: convolvulus_arvensis

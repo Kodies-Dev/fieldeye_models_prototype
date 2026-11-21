@@ -35,18 +35,17 @@ cd "$(dirname "$0")/.."              # glowny folder repo - dziala niezaleznie, 
 
 WG=dane/weedsgalore-dataset          # surowe WeedsGalore (dron)
 SU=dane/sudars/dataset               # surowy Sudars (z ziemi)
-E="dane/EWIS1 Maize, Sorghum & Weed Dataset"   # surowy EWIS1 (inny dron, zwykla kamera RGB)
-[ -d "$E" ] || E=dane/ewis1          # nie ma takiego folderu -> krotsza nazwa
+E="dane/EWIS1 Maize, Sorghum & Weed Dataset"   # surowy EWIS1 (inny dron, zwykla kamera RGB podobna do zuytej w naszym projekcie hardware)
 TEST_DNI=20220516                    # dzien EWIS1 odlozony do testu (ok. 1/3 zdjec kukurydzy)
-L=zbior_lotnicze                     # WeedsGalore po normalizacji
-N=zbior_naziemne                     # Sudars po normalizacji
+L=zbior_lotnicze                     # WeedsGalore po normalizacji tez z odlozonymi do testu
+N=zbior_naziemne                     # Sudars po normalizacji nie sa ta zdj  z drona brak odlozonych
 Z=zbior_ewis1_podzial                # EWIS1 po normalizacji, z odlozonym dniem
 M=models/weights/fieldeye_final.pt   # model koncowy - domyslny w app.py
 W=wyniki/model_koncowy               # tu ida wyniki oceny (.json)
 mkdir -p "$W"
 krok() { echo; echo "=== $*"; }    # naglowek kroku w terminalu, np. krok "1. Normalizacja"
 # bez surowych danych nie ma czego normalizowac - stop od razu, z nazwa brakujacego folderu
-for d in "$WG" "$SU" "$E"; do [ -d "$d" ] || { echo "brak surowych danych: $d"; exit 1; }; done
+for d in "$WG" "$SU" "$E"; do [ -d "$d" ] || { echo "brak surowych danych: $d"; exit 1; }; done #czy istnieje i jest folderem
 
 krok "1. Normalizacja danych"
 # kazdy zbior budowany tylko raz - build_info.json powstaje na koncu budowania

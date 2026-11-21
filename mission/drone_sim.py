@@ -16,14 +16,17 @@ prawda.geojson - ich prawdziwe wspolrzedne - zeby sprawdzic namiary oprysku:
   python -m mission.drone_sim lot/ --pole moje_pole.jpg --gsd-mm 2.5
   python -m mission.drone_sim lot/ --sztuczne                   # bez danych: sztuczne pole
   ... --szum-gps-m 1.5        # blad GPS jak bez RTK (rozne dla kazdego zdjecia)
+
+Pelny test bez drona (dwa terminale):
+    python -m mission.drone_sim lot/ --ewis1 ...           # "dron" zapisuje zdjecia i telemetrie
+    python -m mission.detect_cli lot/ wyniki/              # detekcja + mapa oprysku na biezaco
+    python -m mission.spray_map wyniki/oprysk.geojson lot_prawda.geojson   # ocena namiarow
 """
 import argparse
 import json
-import re
 import sys
 import tempfile
 import time
-from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -32,55 +35,23 @@ import numpy as np
 
 from .spray_map import UkladLokalny
 
-WZOR_KAFELKA = re.compile(r"^(?P<baza>.+)_k(?P<x>\d+)_(?P<y>\d+)$")
-
-
-def zdjecie_z_kafelkow_ewis1(katalog_obrazow, numer=0):
-    """Odtwarza jedno zdjecie EWIS1 z kafelkow (polozenie w nazwie: _k{x}_{y}) razem z ramkami.
-
-    Zwraca (obraz BGR, [(x0, y0, x1, y1)] w pikselach obrazu, nazwa zdjecia). Ten sam
-    chwast z zachodzacych kafelkow jest zapisany raz.
-    """
-    katalog_obrazow = Path(katalog_obrazow)
-    katalog_etykiet = Path(str(katalog_obrazow).replace("images", "labels"))
-    grupy = defaultdict(list)
-    for p in sorted(katalog_obrazow.iterdir()):
-        m = WZOR_KAFELKA.match(p.stem)
-        if m and p.suffix.lower() in (".jpg", ".jpeg", ".png"):
-            grupy[m["baza"]].append((int(m["x"]), int(m["y"]), p))
-    if not grupy:
-        raise FileNotFoundError(f"brak kafelkow z polozeniem w nazwie (_k{{x}}_{{y}}) w {katalog_obrazow}")
-    bazy = sorted(grupy)
-    baza = bazy[numer % len(bazy)]
-    kafelki = [(x, y, p, cv2.imread(str(p))) for x, y, p in grupy[baza]]
-    W = max(x + im.shape[1] for x, y, p, im in kafelki)
-    H = max(y + im.shape[0] for x, y, p, im in kafelki)
-    obraz = np.zeros((H, W, 3), np.uint8)
-    ramki = []
-    for x, y, p, im in kafelki:
-        h, w = im.shape[:2]
-        obraz[y:y + h, x:x + w] = im
-        et = katalog_etykiet / f"{p.stem}.txt"
-        if not et.exists():
-            continue
-        for linia in et.read_text().split("\n"):
-            cz = linia.split()
-            if len(cz) != 5:
-                continue
-            cx, cy, bw, bh = (float(v) for v in cz[1:])
-            ramka = (x + (cx - bw / 2) * w, y + (cy - bh / 2) * h, x + (cx + bw / 2) * w, y + (cy + bh / 2) * h)
-            # ten sam chwast z sasiedniego kafelka: srodek blizej niz 4 px
-            if not any(abs((r[0] + r[2]) - (ramka[0] + ramka[2])) < 8 and abs((r[1] + r[3]) - (ramka[1] + ramka[3])) < 8
-                       for r in ramki):
-                ramki.append(ramka)
-    return obraz, ramki, baza
-
 
 def sztuczne_pole(szer=3000, wys=2000, chwasty=120, seed=0):
     """Gleba z rzedami 'uprawy' i zielonymi plamami 'chwastow' o znanym polozeniu.
 
     Do sprawdzenia calego lancucha bez danych. Prawdziwy model nie musi uznac tych
     plam za chwasty - do oceny namiarow sluzy tu atrapa (--atrapa w fieldeye-detect).
+
+    Argumenty:
+        szer, wys - rozmiar pola w px
+        chwasty   - ile plam
+        seed      - ziarno losowania
+
+    Zwraca:
+        (obraz BGR, ramki plam)
+
+    Uzywana w:
+        main() (--sztuczne)
     """
     rng = np.random.default_rng(seed)
     pole = np.empty((wys, szer, 3), np.uint8)
@@ -98,16 +69,34 @@ def sztuczne_pole(szer=3000, wys=2000, chwasty=120, seed=0):
 
 
 def _w_kadrze(px, py, naroza):
+    """Czy punkt (px, py) lezy w obrysie kadru (naroza z symulatora)."""
     return cv2.pointPolygonTest(np.array(naroza, np.float32), (float(px), float(py)), False) >= 0
 
 
 def _zapisz_atomowo(cel, dane_bajty):
+    """Zapis przez plik tymczasowy i zmiane nazwy - obserwator nigdy nie zobaczy polowy pliku.
+
+    Argumenty:
+        cel        - Path docelowy
+        dane_bajty - zawartosc pliku
+    """
     tmp = cel.with_name(f".{cel.name}.tmp")
     tmp.write_bytes(dane_bajty)
     tmp.replace(cel)
 
 
 def main(argv=None):
+    """Caly symulowany lot: pole -> kadry (rozloz) -> co --interwal s zdjecie + telemetria do folderu.
+
+    Argumenty:
+        argv - lista opcji albo None (sys.argv); opisy w --help
+
+    Zwraca:
+        0 = OK, 2 = zle wejscie (nieczytelne zdjecie, pole za male na kadr)
+
+    Uzywana w:
+        python -m mission.drone_sim, scripts/fieldeye_detect_main.py (fieldeye-detect dron ...)
+    """
     ap = argparse.ArgumentParser(prog="python -m mission.drone_sim", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("folder", help="folder, do ktorego 'kamera' zapisuje zdjecia i telemetrie (np. lot/)")
@@ -134,7 +123,14 @@ def main(argv=None):
     from stitchlive.flight_sim import SimSettings, rozloz
 
     if a.ewis1:
-        pole, ramki, nazwa = zdjecie_z_kafelkow_ewis1(a.ewis1, a.numer)
+        # zdjecie EWIS1 odtworzone z kafelkow (_k{x}_{y}) - ten sam kod co zakladka 4 w app.py
+        from .sim_flight import pole_ze_zdjecia, zdjecia_z_kafelkow
+        zdjecia = zdjecia_z_kafelkow(Path(a.ewis1).iterdir())
+        if not zdjecia:
+            print(f"brak kafelkow z polozeniem w nazwie (_k{{x}}_{{y}}) w {a.ewis1}", file=sys.stderr)
+            return 2
+        nazwa = sorted(zdjecia)[a.numer % len(zdjecia)]
+        pole, ramki = pole_ze_zdjecia(zdjecia[nazwa], z_etykietami=True)
     elif a.pole:
         pole, ramki, nazwa = cv2.imread(a.pole), [], Path(a.pole).name
         if pole is None:

@@ -11,8 +11,8 @@ i nanoszenie ich na mapę pola.
                         models/        trening, ocena według dni, eksport ONNX
                               │
                               ▼  scripts/HAILO.md: ONNX → .hef (Linux x86 / WSL)
-   zdjęcia z drona ─► mission/         detekcja (YOLO / Hailo, kafelki, TTA),
-                              │        współrzędne chwastów, mapa GeoJSON
+   zdjęcia z drona ─► mission/         fieldeye-detect: detekcja (YOLO / ONNX / Hailo, kafelki),
+                              │        współrzędne chwastów, mapa oprysku GeoJSON
                               ▼
                         stitchlive/    składanie zdjęć w mozaikę, symulator lotu,
                                        model kamery drona
@@ -23,16 +23,15 @@ i nanoszenie ich na mapę pola.
 
 | Część | Stan |
 |---|---|
-| detektor chwastów | YOLOv8n, nadpróbkowanie maja + TTA: AP50 ok. 0,715, czułość ok. 69%, precyzja ok. 66% (test WeedsGalore, 2 ziarna) — `models/README.md` |
-| słaby punkt | najmłodsze siewki (25 maja): ok. 30% — ograniczeniem jest ich wielkość w pikselach |
+| detektor chwastów | model końcowy `models/weights/fieldeye_final.pt` (YOLOv8n, wejście 1280, WeedsGalore + Sudars + EWIS1): na zwykłej kamerze RGB (EWIS1, dzień niewidziany w treningu) AP50 0,817, czułość 78%, precyzja 84%; na WeedsGalore AP50 0,714 (z TTA) — `models/README.md` |
+| słaby punkt | najmłodsze siewki (WeedsGalore, 25 maja): ok. 32% — ograniczeniem jest ich wielkość w pikselach |
 | symulator | lot z kamerą drona (5 m, Arducam), kafelki 1,5 m, rozmycie ruchem, porównanie z prawdziwymi ramkami |
 | składanie | metoda `global` (własna), PSNR 22–25 dB na symulowanych lotach |
-| Hailo-8 | `HailoDetector`, ocena `.hef`, instrukcja kompilacji; plik `.hef` jeszcze nieskompilowany |
-| w toku | nowe dane (EWIS1, PhenoBench), drugi test na innym polu (`scripts/final_model.sh`) |
-| testy | 253, wszystkie przechodzą (`tests/README.md`) |
+| Hailo-8 | `fieldeye_final_1280_h8.hef` skompilowany (`scripts/compile_hef.py`, jeden kontekst, 5,4 MB; w `model_fin.zip`); sprawdzenie na Pi: `bash scripts/check_hef.sh` |
+| do zrobienia | pomiar HEF na Pi względem `.pt`; zdjęcia z naszego drona do dostrojenia modelu |
+| testy | ok. 210, wszystkie przechodzą (`tests/README.md`) |
 
-Nazwy pakietów, plików i klas są angielskie, opisy po polsku; tabela starych
-i nowych nazw: `NAZWY.md`.
+Nazwy pakietów, plików i klas są angielskie, opisy po polsku.
 
 ## Szybki start
 
@@ -47,9 +46,9 @@ streamlit run app.py
 |---|---|
 | dane i normalizacja | `normalization/README.md` |
 | trening, ocena, wyniki, eksport | `models/README.md` |
-| misja, detektory, Hailo, konfiguracje | `mission/README.md`, `scripts/HAILO.md`, `configs/` |
+| detekcja w locie (binarka), detektory, Hailo | `mission/README.md`, `docs/fieldeye-detect.md`, `scripts/HAILO.md` |
 | składanie, symulator, kamera | sekcje niżej, `stitchlive/README.md` |
-| skrypty eksperymentów | `scripts/README.md` |
+| skrypty | `scripts/README.md` |
 
 ---
 
@@ -99,13 +98,14 @@ Wynik w katalogu `demo/`:
 streamlit run app.py
 ```
 
-Otwiera się w przeglądarce, trzy zakładki:
+Otwiera się w przeglądarce, cztery zakładki:
 
 | Zakładka | Co robi |
 |---|---|
 | **1. Rozkład zdjęcia** | wgrywasz zdjęcie (albo generujesz sztuczne pole), ustawiasz tryb lotu i zakłócenia, klikasz *Rozłóż* — widzisz trasę na oryginale i pierwsze kadry |
 | **2. Kadry do pobrania** | galeria kadrów, podgląd pojedynczego z jego prawdziwym położeniem; pobieranie: same kadry (ZIP), kadry + `prawda.json` + podgląd trasy (ZIP), pojedynczy kadr |
 | **3. Składanie** | kadry z zakładki 1 albo własne (zdjęcia lub ZIP); mozaika rośnie na żywo kadr po kadrze; ocena względem oryginału; pobieranie: mozaika (JPG), animacja składania (GIF), mozaika + kroki + raport (ZIP) |
+| **4. Lot z detekcją** | symulowany lot z modelem (domyślnie `models/weights/fieldeye_final.pt`, wejście 1280): wykrycia na każdym kadrze, prawdziwe ramki z kafelków zbioru (`zbior_lotnicze/...`: kafelki jednego dnia sklejane w siatkę), mozaika z chwastami, tryb kamery drona, GIF z lotu |
 
 Zestawy zakłóceń w zakładce 1:
 
@@ -170,85 +170,19 @@ python -m stitchlive.cli rozloz zdjecie.jpg --tryb-ciecia losowy \
 
 ---
 
-## Sezonowość: wynik na najmłodszych siewkach
+## Model końcowy — co w nim jest
 
-Model `wg_sudars` znajduje ok. 82% chwastów 6 czerwca i tylko 27–28% 25 maja.
-Moduł `models/season.py` i skrypt `scripts/season_experiments.sh` sprawdzają
-trzy sposoby poprawy, bez nowych danych:
+Jeden skrypt od surowych danych do modelu i paczki dla Hailo: `scripts/final_model.sh`.
 
-| Wariant | Co zmienia |
-|---|---|
-| A nadpróbkowanie | kafelki 25 maja ×3, 30 maja ×2 w treningu |
-| B A + scale 0,2 | dodatkowo mniej zmniejszania zdjęć w augmentacji |
-| C model wczesny | `wg_sudars` dostrojony na kafelkach z maja |
-| + próg dnia | osobny próg ufności dla każdego dnia, dobrany na walidacji |
-
-```bash
-caffeinate -i bash scripts/season_experiments.sh           # ok. 7 h
-SEED=1 caffeinate -i bash scripts/season_experiments.sh    # potwierdzenie drugim ziarnem
-```
-
-Walidacja i test zostają bez zmian (tylko WeedsGalore, oficjalny podział),
-więc wyniki są wprost porównywalne z `wg_sudars`. Poprawa liczy się wtedy, gdy
-25 maja jest lepiej o ponad 4 pp, a 6 czerwca nie gorzej o ponad 2 pp.
-
-## Łączenie wykryć z wielu zdjęć
-
-Przy pokryciu 70% / 50% ten sam chwast jest na 3–6 zdjęciach. `mission/fusion.py`
-łączy wykrycia tego samego miejsca: wynik = 1 − (1 − p₁)(1 − p₂)… (noisy-OR), więc
-słabe wykrycia z kilku zdjęć sumują się zamiast przepadać pod progiem. Wariant
-z głosowaniem odrzuca słabe wykrycie widziane tylko na jednym z co najmniej
-trzech zdjęć obejmujących to miejsce. Zasada ustalona z góry, nie dobierana na teście.
-
-```bash
-bash scripts/fusion_eval.sh                                  # pomiar na kafelkach testowych, kilka minut
-python -m mission.cli symulacja --model modele_wg_sudars/model.pt --zaklocenia
-```
-
-W zakładce 4: drugi rząd liczników „Łączenie widoków” i widok mozaiki o tej nazwie.
-Logika lotu z detekcją jest w `mission/sim_flight.py`, wspólna dla interfejsu i komendy.
-
-## Poprawy bez treningu: ensemble, TTA, niski próg z głosowaniem
-
-| | Co robi |
-|---|---|
-| ensemble | kilka modeli (np. dwa ziarna) na tym samym zdjęciu, wyniki łączone przez WBF |
-| TTA | detekcja na oryginale i odbiciu poziomym, łączona przez WBF |
-| niski próg + głosowanie | wykrycie poniżej 0,15 przyjęte, gdy widać je na co najmniej 2 kadrach |
-
-```bash
-bash scripts/inference_experiments.sh          # kilka-kilkanaście minut
-python -m models.cli ocen-detektor modele_wg_sudars/model.pt modele_wg_sudars_s1/model.pt \
-       zbior_lotnicze/dataset/data.yaml --tta
-```
-
-Ensemble i TTA uśredniają pewność z przebiegów, więc porównuje się je po AP50.
-
-## Nowe dane: EWIS1 i PhenoBench
-
-| Zbiór | Co ma | Adapter |
+| Element | Co robi | Gdzie |
 |---|---|---|
-| EWIS1 (Mendeley 2026) | dron DJI Mavic 2 Pro, 5 m, kukurydza (sorgo domyślnie pominięte), ramki | `--ewis1`, skala ×0,47 |
-| PhenoBench (Bonn) | dron, burak cukrowy, trzy fazy, maski każdej rośliny | `--phenobench`, skala z wielkości chwastów |
+| dane | WeedsGalore + Sudars + EWIS1 (zdjęcia ×0,47 do skali drona, 2,5 mm/px) | `normalization/` |
+| sezonowość | kafelki 25 maja ×3, 30 maja ×2 w treningu — najmłodsze siewki są najtrudniejsze | `models/season.py` |
+| trening | jeden etap, YOLOv8n, wejście 1280, 100 epok, SGD lr0 0,01 | `models/plan.py`, `models/training.py` |
+| ocena | AP50 i czułość/precyzja przy progu 0,15, osobno dla każdego dnia; z TTA (odbicie poziome, WBF) | `models/evaluation.py`, `mission/detector.py` |
+| test | dzień EWIS1 2022-05-16 (niewidziany w treningu) i test WeedsGalore | `wyniki/model_koncowy/` |
 
-```bash
-caffeinate -i bash scripts/new_data_experiment.sh                          # oba warianty, ok. 9-10 h
-WARIANTY="dane_ewis1" caffeinate -i bash scripts/new_data_experiment.sh    # tylko EWIS1, ok. 4 h
-```
-
-Przepis jak w modelu `sezon_nadprob` (nadpróbkowanie + Sudars), walidacja i test
-tylko WeedsGalore. Skrypt zatrzymuje się, gdy normalizacja zgłosi nierozpoznane etykiety.
-
-## WeedMaize jako dodatkowe dane
-
-Młode fazy kukurydzy (V1–V3) i chwastów (Vc–V1), w tym chwastnica. Zdjęcia z 1,3 m
-zmniejszane do skali drona (`--skala weedmaize=0.144`), całość do treningu
-(`--proporcje 1 0 0`), walidacja i test bez zmian.
-
-```bash
-caffeinate -i bash scripts/weedmaize_experiment.sh            # ok. 6 h
-PRZEPIS=nadprob caffeinate -i bash scripts/weedmaize_experiment.sh
-```
+Wyniki i przebieg eksperymentów, które doprowadziły do tego przepisu: `models/README.md`.
 
 ## Kamera drona w symulatorze
 
@@ -409,51 +343,34 @@ Szczegóły: `scripts/README.md`.
 
 ---
 
-## Prawdziwe dane
-
-```bash
-./scripts/download_datasets.sh list
-./scripts/download_datasets.sh brighton_beach
-python -m stitchlive.cli batch dane/brighton_beach/images --limit 10 -o wyniki
-```
-
-Zbiory z ODMdata mają zdjęcia ~4000×3000 px — przy pierwszym uruchomieniu
-użyj `--limit`.
-
----
-
----
-
 ## Podfoldery
 
 | Folder | Co zawiera |
 |---|---|
-| `mission/` | **pełny przebieg lotu**: detekcja chwastów i mapowanie na współrzędne w locie, po wylądowaniu scalenie powtórzeń, mapa i mozaika |
-| `normalization/` | **cztery zbiory → jeden zbiór YOLO**: adaptery, ujednolicenie klas, deduplikacja, podział bez przecieków, kafelkowanie |
-| `models/` | **trening trzyetapowy, ocena i eksport** pod układ programowalny |
+| `mission/` | **detekcja w locie**: `fieldeye-detect` (binarka na Pi) — nowe zdjęcia → chwasty → punkty oprysku z telemetrii GeoJSON; symulowany dron |
+| `normalization/` | **trzy zbiory → zbiory YOLO**: adaptery, ujednolicenie klas, deduplikacja, podział bez przecieków, kafelkowanie |
+| `models/` | **trening, ocena i eksport** do ONNX i kalibracji pod Hailo-8 |
 
 Każdy ma własne README. `normalization/` ma dodatkowo `HOW_IT_WORKS.md` (opis kodu)
 obok `README.md` (plan: co trzeba zrobić i dlaczego).
 
 ```bash
-# lot: detekcja + mapowanie na współrzędne, potem mozaika
-pip install -r requirements.txt
-python -m mission.cli pelna zdjecia/ -o wynik --zdjecia zdjecia/
+# detekcja na zdjęciach z lotu (telemetria GeoJSON obok zdjęć) -> mapa oprysku
+python -m mission.detect_cli zdjecia/ wyniki/ models/weights/fieldeye_final.pt
 
-# dane: cztery zbiory -> jeden zbiór treningowy
+# dane: zbiory publiczne -> zbiór treningowy
 python -m normalization.build --weedsgalore ... --sudars ... -o zbior
 
 # model: kontrola zbioru przed treningiem (bez ultralytics)
 python -m models.cli sprawdz zbior/dataset/data.yaml
-python -m models.cli rozmiary zbior/dataset --split train
 ```
 
-Kluczowa własność modułu `mission`: **mapowanie chwastu na współrzędne nie wymaga
-mozaiki** — wystarczy GPS, kurs i wysokość pojedynczego zdjęcia. Dlatego
-detekcja może działać w locie, a składanie dopiero po wylądowaniu.
+Kluczowa własność: **mapowanie chwastu na współrzędne nie wymaga mozaiki** —
+wystarczy GPS, kurs i wysokość pojedynczego zdjęcia. Dlatego detekcja działa w locie,
+zdjęcie po zdjęciu.
 
 W module `models` sam trening wymaga pakietu `ultralytics` (licencja AGPL-3.0);
-plan treningu, kontrola `data.yaml` i analiza rozmiarów obiektów działają bez niego.
+plan treningu i kontrola `data.yaml` działają bez niego.
 
 
 ---
@@ -461,37 +378,39 @@ plan treningu, kontrola `data.yaml` i analiza rozmiarów obiektów działają be
 ## Hailo-8 (Raspberry Pi 5 + AI HAT+)
 
 Na dronie model działa jako plik `.hef` na akceleratorze Hailo-8. Trening, ocena
-i interfejs na Macu dalej używają `.pt`; `.hef` powstaje na końcu z ONNX.
+i symulator na komputerze używają `.pt`; `.hef` powstaje na końcu z ONNX.
 
-| Model | Wejście | Do czego |
-|---|---|---|
-| `modele_wg_sudars` | 1280 | najlepszy wynik; na Hailo wymaga własnej konfiguracji NMS |
-| `modele_wg_sudars_640` | 640 | zgodny z gotową konfiguracją `yolov8n` w Hailo Model Zoo |
+| Plik | Co to |
+|---|---|
+| `models/weights/fieldeye_final.pt` | model końcowy (PyTorch), wejście 1280 |
+| `fieldeye_final_1280_h8.hef` (w `model_fin.zip`) | ten sam model skompilowany dla Hailo-8, HailoRT 4.23 |
 
 ```
-Mac:           caffeinate -i bash scripts/finish_models.sh   → hailo/ (ONNX, kalibracja, test)
-Linux x86:     hailomz compile ... --hw-arch hailo8           → hailo/*.hef   (scripts/HAILO.md)
-Raspberry Pi:  bash scripts/check_hef.sh                    → porównanie .hef z .pt
+Mac:           python -m models.cli onnx ... --wejscie 1280 --opset 11, models.cli kalibracja ...
+WSL (Ubuntu):  python scripts/compile_hef.py model.onnx kalibracja_1280 -o fieldeye_final_1280_h8.hef --rozmiar 1280
+Raspberry Pi:  bash scripts/check_hef.sh       → akcelerator, HEF, szybkość, dokładność na teście EWIS1 względem .pt
 ```
 
-- `mission/detector.py` → `HailoDetector`: misja wybiera go sama dla pliku `.hef`,
-- `python -m models.cli ocen-detektor model.pt|model.onnx|model.hef data.yaml`:
-  ta sama ocena (AP50, próg, wynik według dni) dla każdego formatu,
-- gotowe konfiguracje misji: `configs/mission_wg_sudars.yaml`, `configs/mission_hailo.yaml`.
+- `scripts/compile_hef.py` używa kompilatora Hailo (DFC 3.33.0, Model Zoo 2.17.0) bezpośrednio, z własną
+  konfiguracją NMS (obraz 1280, jedna klasa, próg 0,05, do 300 ramek) — samo `hailomz compile` ma NMS dla 640 i próg 0,2,
+- `mission/detector.py` → `HailoDetector`: binarka i `ocen-detektor` wybierają go same dla pliku `.hef`,
+- `python -m models.cli ocen-detektor model.pt|model.onnx|model.hef data.yaml`: ta sama ocena dla każdego formatu,
+- na Pi: `./fieldeye-detect ZDJECIA WYNIKI fieldeye_final_1280_h8.hef` (`docs/fieldeye-detect.md`, kafelek 950 px = 1,5 m pola z 5 m).
 
 ## Pełna dokumentacja
 
-Nazwy pakietów, plików i klas są angielskie; tabela starych i nowych nazw jest w `NAZWY.md`.
+Nazwy pakietów, plików i klas są angielskie. Dokumenty dla zespołu (Word, na Dysku): opis projektu, model i konwersja do HEF, zbiory danych.
 
 | Plik | Zawartość |
 |---|---|
 | `README.md` (ten plik) | przegląd projektu, moduł stitchlive, uruchomienie |
-| `mission/README.md` | lot: detekcja i georeferencja w locie, mapa po wylądowaniu |
+| `mission/README.md` | detekcja w locie, detektory, symulowany lot |
+| `docs/fieldeye-detect.md` | binarka `fieldeye-detect`: uruchamianie, telemetria, mapa oprysku, Raspberry Pi |
 | `normalization/README.md` | **lista zadań** do wykonania przy przygotowaniu danych |
 | `normalization/HOW_IT_WORKS.md` | opis działania kodu normalizacji |
-| `models/README.md` | trening trzyetapowy, ocena, eksport pod układ programowalny |
+| `models/README.md` | trening, ocena, wyniki, eksport do Hailo |
 | `stitchlive/README.md` | moduły pakietu składającego |
-| `scripts/README.md` | skrypty pomocnicze i generator pola |
+| `scripts/README.md` | model końcowy, Hailo, binarka, generator pola |
 | `tests/README.md` | co sprawdza który plik testów |
 
 ## Co działa, a co nie — wprost
@@ -500,16 +419,16 @@ Nazwy pakietów, plików i klas są angielskie; tabela starych i nowych nazw jes
 |---|---|
 | składanie mozaiki (metoda `global`) | działa, zmierzone na prawdziwych zdjęciach z drona |
 | symulator lotu i ocena względem oryginału | działa |
-| georeferencja detekcji (piksel → współrzędne) | działa, błąd 3 cm przy GSD 1 cm/px |
-| normalizacja zbiorów (WeedsGalore, Sudars, EWIS1, PhenoBench, WeedMaize, CoFly) | działa |
-| plan treningu, kontrola danych, analiza zbioru | działa |
-| **detektor chwastów** | **wytrenowany** — YOLOv8n z nadpróbkowaniem maja, z TTA: AP50 ok. 0,715, czułość ok. 0,69 przy progu 0,15 (`models/README.md`) |
+| georeferencja detekcji (piksel → współrzędne) | działa (`fieldeye-detect`, symulowany dron: `test_spray_map.py`) |
+| normalizacja zbiorów (WeedsGalore, Sudars, EWIS1) | działa |
+| plan treningu, kontrola danych | działa |
+| **detektor chwastów** | **model końcowy** — na zwykłej kamerze RGB AP50 0,817, czułość 0,78; na WeedsGalore AP50 0,714 (`models/README.md`) |
 | trening, ocena modelu | **działa** — Windows (CUDA) i Mac (MPS) |
 | eksport ONNX | działa, z kontrolą zgodności z `.pt` |
-| Hailo-8: `HailoDetector`, ocena `.hef` | kod napisany i przetestowany bez sprzętu; **plik `.hef` jeszcze nieskompilowany** |
-| test na innym polu i kamerze RGB | w toku (`scripts/final_model.sh`) |
+| Hailo-8: `HailoDetector`, `.hef` | **plik `.hef` skompilowany**; pomiar na Pi (`check_hef.sh`) do zrobienia |
+| test na innej kamerze (RGB) | zrobiony (`scripts/final_model.sh`): bez EWIS1 w treningu model nic nie wykrywał, z nim 78% |
 | georeferencja mozaiki (world file) | **niezrobione** |
-| korekta przechylenia z IMU | odczytywane, **nieużywane** |
+| korekta przechylenia z IMU | odczytywane — tylko do odrzucania przechylonych zdjęć, **bez korekty** |
 
 
 ## Testy
@@ -518,7 +437,7 @@ Nazwy pakietów, plików i klas są angielskie; tabela starych i nowych nazw jes
 python -m pytest tests -q
 ```
 
-253 testy; lista plików i tego, co sprawdzają: `tests/README.md`.
+Ok. 210 testów; lista plików i tego, co sprawdzają: `tests/README.md`.
 
 ---
 
@@ -535,12 +454,11 @@ stitchlive/
 ├── field.py       generator sztucznego pola
 ├── source.py     źródła obrazów (katalog obserwowany, tryb wsadowy)
 └── cli.py        wiersz poleceń
-mission/           detekcja, georeferencja, mapa, Hailo, symulowany lot   (mission/README.md)
-models/            trening, ocena, eksport                                 (models/README.md)
+mission/           fieldeye-detect: detekcja, mapa oprysku, Hailo; symulowany dron (mission/README.md)
+models/            trening, ocena, eksport                                  (models/README.md)
 normalization/     zbiory publiczne → YOLO                                  (normalization/README.md)
-configs/           gotowe konfiguracje misji (.pt i .hef)
-scripts/           eksperymenty, Hailo, narzędzia                           (scripts/README.md)
-tests/             253 testy                                                (tests/README.md)
+scripts/           model końcowy, Hailo, binarka, narzędzia                 (scripts/README.md)
+tests/             ok. 210 testów                                           (tests/README.md)
 app.py             GUI w Streamlit
 ```
 

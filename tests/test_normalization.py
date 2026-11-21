@@ -4,7 +4,6 @@ Najwazniejsze testy to te o przeciekach (podzial po grupach) i o poprawnosci
 przeliczania ramek - blad w nich jest niewidoczny w metrykach, a psuje trening.
 """
 
-import json
 import subprocess
 import sys
 from pathlib import Path

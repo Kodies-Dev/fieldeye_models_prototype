@@ -3,11 +3,22 @@
 Jedyne miejsce, w ktorym powstaje format YOLO. Wszystkie zbiory zrodlowe
 przeszly juz przez manifest, wiec ten kod jest napisany raz i nie zalezy
 od tego, skad dane pochodza.
+
+Co robi (wolane z build.py zbuduj(), krok 6):
+    eksportuj()      - dla kazdego Record: wczytuje zdjecie (WeedsGalore: sklada kanaly R, G, B),
+                       zmniejsza wg skali, wycina kafelek, zapisuje .jpg + etykiete .txt + data.yaml
+    podglad_ramek()  - 12 losowych kafelkow z narysowanymi ramkami -> folder podglad/
+    zapisz_info()    - build_info.json z data budowy
+    ustaw_kolory_weedsgalore() - liniowe / srgb (opcja --weedsgalore-kolory; model koncowy: liniowe)
+
+Wynik:
+    dataset/images/{train,val,test}/*.jpg
+    dataset/labels/{train,val,test}/*.txt   - "<klasa> <x_srodka> <y_srodka> <szer> <wys>" (0-1)
+    dataset/data.yaml
 """
 
 import json
 import logging
-import shutil
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
@@ -18,6 +29,7 @@ import numpy as np
 log = logging.getLogger(__name__)
 
 
+# pamiec ostatnio wczytanego zdjecia: (sciezka, skala) -> obraz
 _PAMIEC = {"klucz": None, "obraz": None}
 
 # Jak skladac obraz z surowych kanalow WeedsGalore (16 bit, liniowe pomiary kamery multispektralnej):
@@ -25,10 +37,22 @@ _PAMIEC = {"klucz": None, "obraz": None}
 #   "srgb"    - po rozciagnieciu korekta gamma sRGB, jak w zwyklym aparacie (EWIS1, Arducam).
 # Model uczony na wersji liniowej prawie nie wykrywal chwastow na zwyklych zdjeciach RGB
 # (AP50 0,03 na EWIS1); te same zdjecia przerobione na styl liniowy dawaly 0,22.
-KOLORY_WG = {"tryb": "liniowe"}
+# (Model koncowy jest liniowy, ale ma EWIS1 w treningu - stad dziala tez na zwyklym RGB.)
+KOLORY_WG = {"tryb": "liniowe"}      # slownik, zeby ustaw_kolory_weedsgalore() mogla zmienic wartosc
 
 
 def ustaw_kolory_weedsgalore(tryb):
+    """Ustawia sposob skladania kolorow WeedsGalore dla calej budowy.
+
+    Argumenty:
+        tryb - "liniowe" (model koncowy) albo "srgb"
+
+    Zwraca:
+        nic; zmienia KOLORY_WG i czysci pamiec zdjecia (inny tryb = inny obraz)
+
+    Uzywana w:
+        build.py main() (--weedsgalore-kolory), tests/test_colors.py
+    """
     if tryb not in ("liniowe", "srgb"):
         raise ValueError(f"nieznany tryb kolorow: {tryb}")
     KOLORY_WG["tryb"] = tryb
@@ -36,7 +60,20 @@ def ustaw_kolory_weedsgalore(tryb):
 
 
 def _liniowe_na_srgb(x):
-    """Korekta gamma sRGB dla wartosci 0-1."""
+    """Korekta gamma sRGB dla wartosci 0-1.
+
+    Po co: kamera multispektralna mierzy swiatlo liniowo, a zwykly aparat
+           rozjasnia ciemne partie (gamma). Ta funkcja robi to samo.
+
+    Argumenty:
+        x - numpy, wartosci 0-1 (liniowe)
+
+    Zwraca:
+        numpy, wartosci 0-1 (sRGB), np. 0.5 -> ok. 0.74
+
+    Uzywana w:
+        _wczytaj_bez_skali() (ten plik) - tylko w trybie "srgb"
+    """
     return np.where(x <= 0.0031308, 12.92 * x, 1.055 * np.power(np.clip(x, 0, 1), 1 / 2.4) - 0.055)
 
 
@@ -49,28 +86,63 @@ def _wczytaj_obraz(rekord):
     Ostatnie zdjecie zostaje w pamieci: kafelki jednego zdjecia ida po kolei,
     wiec duze PNG (EWIS1: ok. 40 MB) sa rozpakowywane raz, a nie raz na kafelek.
     Zwracana jest kopia, bo wycinki kafelkow moga byc pozniej modyfikowane.
+
+    Argumenty:
+        rekord - Record (obraz = sciezka albo prefiks WeedsGalore, skala, ...)
+
+    Zwraca:
+        numpy (h, w, 3) uint8 BGR - juz w skali rekordu - albo None
+
+    Uzywana w:
+        eksportuj(), podglad_ramek() (ten plik)
     """
     klucz = (str(rekord.obraz), getattr(rekord, "skala", 1.0) or 1.0)
     if _PAMIEC["klucz"] == klucz and _PAMIEC["obraz"] is not None:
-        return _PAMIEC["obraz"].copy()
+        return _PAMIEC["obraz"].copy()               # to samo zdjecie co poprzednio - z pamieci
     img = _wczytaj_obraz_z_dysku(rekord)
     _PAMIEC["klucz"], _PAMIEC["obraz"] = klucz, img
     return None if img is None else img.copy()
 
 
 def _wczytaj_obraz_z_dysku(rekord):
+    """Wczytuje zdjecie z dysku i zmniejsza je wg rekord.skala (np. EWIS1 x0.47).
+
+    Argumenty:
+        rekord - Record
+
+    Zwraca:
+        numpy (h, w, 3) uint8 BGR albo None
+
+    Uzywana w:
+        _wczytaj_obraz() (ten plik)
+    """
     img = _wczytaj_bez_skali(rekord)
     f = getattr(rekord, "skala", 1.0) or 1.0
     if img is not None and f != 1.0:
         h, w = img.shape[:2]
+        # INTER_AREA przy zmniejszaniu (usrednia piksele), INTER_LINEAR przy powiekszaniu
         img = cv2.resize(img, (max(1, round(w * f)), max(1, round(h * f))),
                          interpolation=cv2.INTER_AREA if f < 1 else cv2.INTER_LINEAR)
     return img
 
 
 def _wczytaj_bez_skali(rekord):
+    """Wczytuje zdjecie w oryginalnym rozmiarze; WeedsGalore - sklada kanaly B, G, R.
+
+    Po co: zwykle zdjecia (Sudars, EWIS1) czyta wprost; WeedsGalore ma 3 osobne
+           pliki 16-bit - trzeba je zlozyc i sprowadzic do 8 bitow (0-255).
+
+    Argumenty:
+        rekord - Record; obraz = plik albo prefiks, np. ".../2023-05-25_0012" (bez _R.png)
+
+    Zwraca:
+        numpy (h, w, 3) uint8 BGR albo None, gdy brakuje pliku
+
+    Uzywana w:
+        _wczytaj_obraz_z_dysku() (ten plik), tests/test_colors.py
+    """
     p = Path(rekord.obraz)
-    if p.exists():
+    if p.exists():                                   # zwykle zdjecie (Sudars, EWIS1)
         img = cv2.imread(str(p), cv2.IMREAD_COLOR)
         if img is not None:
             return img
@@ -80,7 +152,7 @@ def _wczytaj_bez_skali(rekord):
         if c is None:
             return None
         kanaly.append(c if c.ndim == 2 else c[:, :, 0])
-    img = np.dstack(kanaly)
+    img = np.dstack(kanaly)                          # 3 kanaly -> jeden obraz (h, w, 3)
     if img.dtype == np.uint8 and KOLORY_WG["tryb"] == "liniowe":
         return img                                   # jak dotad: 8-bitowe kanaly bez zmian
     # WSPOLNA skala dla trzech kanalow. Rozciaganie kazdego osobno zmienia
@@ -91,7 +163,7 @@ def _wczytaj_bez_skali(rekord):
     lo, hi = np.percentile(f, 0.5), np.percentile(f, 99.5)
     if hi <= lo:
         hi = lo + 1.0
-    x = np.clip((f - lo) / (hi - lo), 0, 1)
+    x = np.clip((f - lo) / (hi - lo), 0, 1)          # 0-1
     if KOLORY_WG["tryb"] == "srgb":
         x = _liniowe_na_srgb(x)
     return np.clip(x * 255.0, 0, 255).astype(np.uint8)
@@ -107,11 +179,24 @@ def eksportuj(rekordy, katalog, nazwy_klas=None, kopiuj_obrazy=True, jakosc=92):
 
     Etykiety YOLO: jedna linia na obiekt, wartosci znormalizowane do 0-1:
         <klasa> <x_srodka> <y_srodka> <szerokosc> <wysokosc>
+
+    Argumenty:
+        rekordy       - lista Record (kafelki po kafelkowaniu)
+        katalog       - folder wyniku, np. "zbior_lotnicze/dataset"
+        nazwy_klas    - lista klas w kolejnosci indeksow, np. ["chwast"]; None = z rekordow
+        kopiuj_obrazy - False = tylko etykiety (szybki test, --bez-obrazow)
+        jakosc        - jakosc JPEG 0-100, np. 92
+
+    Zwraca:
+        dict, np. {"klasy": ["chwast"], "obiektow": {"chwast": 1628}, "pominiete": 0}
+
+    Uzywana w:
+        build.py zbuduj() - krok 6 (wynik -> build_info.json), tests/test_normalization.py
     """
     katalog = Path(katalog)
     if nazwy_klas is None:
         nazwy_klas = sorted({o.klasa for r in rekordy for o in r.obiekty})
-    idx = {n: i for i, n in enumerate(nazwy_klas)}
+    idx = {n: i for i, n in enumerate(nazwy_klas)}   # nazwa klasy -> numer w YOLO, np. {"chwast": 0}
 
     for split in ("train", "val", "test"):
         (katalog / "images" / split).mkdir(parents=True, exist_ok=True)
@@ -120,7 +205,7 @@ def eksportuj(rekordy, katalog, nazwy_klas=None, kopiuj_obrazy=True, jakosc=92):
     licznik, pominiete = Counter(), 0
     for r in rekordy:
         split = r.split or "train"
-        nazwa = r.id.replace("/", "__")
+        nazwa = r.id.replace("/", "__")             # "ewis1/Loew_..._k0_806" -> "ewis1__Loew_..._k0_806"
 
         if kopiuj_obrazy:
             img = _wczytaj_obraz(r)
@@ -134,6 +219,7 @@ def eksportuj(rekordy, katalog, nazwy_klas=None, kopiuj_obrazy=True, jakosc=92):
             cv2.imwrite(str(katalog / "images" / split / f"{nazwa}.jpg"), img,
                         [cv2.IMWRITE_JPEG_QUALITY, jakosc])
 
+        # ramka w pikselach [x0, y0, x1, y1] -> YOLO: srodek i rozmiar jako ulamki 0-1
         wiersze = []
         for o in r.obiekty:
             if o.klasa not in idx:
@@ -160,6 +246,24 @@ def eksportuj(rekordy, katalog, nazwy_klas=None, kopiuj_obrazy=True, jakosc=92):
 
 
 def _data_yaml(katalog, nazwy):
+    """Zapisuje data.yaml - plik, ktory YOLO czyta jako pierwszy.
+
+    Argumenty:
+        katalog - folder dataset/
+        nazwy   - lista klas, np. ["chwast"]
+
+    Zwraca:
+        nic; tworzy np.:
+            path: /Users/.../zbior_lotnicze/dataset
+            train: images/train
+            val: images/val
+            test: images/test
+            names:
+              0: chwast
+
+    Uzywana w:
+        eksportuj() (ten plik)
+    """
     linie = ["# wygenerowane przez normalization/export.py",
              f"path: {Path(katalog).resolve()}",
              "train: images/train", "val: images/val", "test: images/test",
@@ -170,7 +274,18 @@ def _data_yaml(katalog, nazwy):
 
 def zapisz_info(katalog, info):
     """Zapis parametrow budowy - bez tego po miesiacu nie odtworzysz,
-    na czym trenowany byl model, ktory dal najlepszy wynik."""
+    na czym trenowany byl model, ktory dal najlepszy wynik.
+
+    Argumenty:
+        katalog - folder zbioru, np. "zbior_lotnicze"
+        info    - slownik z build.py zbuduj() (parametry, statystyki, etykiety, podzial)
+
+    Zwraca:
+        Path do build_info.json (z dopisana data budowy w UTC)
+
+    Uzywana w:
+        build.py zbuduj() - na samym koncu (final_model.sh traktuje ten plik jako "zbior gotowy")
+    """
     info = {**info, "data": datetime.now(timezone.utc).isoformat(timespec="seconds")}
     p = Path(katalog) / "build_info.json"
     p.write_text(json.dumps(info, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -183,6 +298,18 @@ def podglad_ramek(rekordy, katalog, ile=12, seed=0):
     Blad w konwersji (przesuniecie o pol piksela, pomylona kolejnosc osi,
     zla wartosc maski) jest niewidoczny w metrykach, a psuje caly trening.
     Ten kwadrans ogladania oszczedza dni.
+
+    Argumenty:
+        rekordy - lista Record (kafelki)
+        katalog - folder podgladu, np. "zbior_lotnicze/podglad"
+        ile     - ile losowych kafelkow z obiektami, np. 12
+        seed    - ziarno losowania (te same kafelki przy kazdej budowie)
+
+    Zwraca:
+        lista Path zapisanych .jpg (ramki: zielone = uprawa, rozowe = chwast)
+
+    Uzywana w:
+        build.py zbuduj() - krok 6
     """
     katalog = Path(katalog)
     katalog.mkdir(parents=True, exist_ok=True)
@@ -204,7 +331,7 @@ def podglad_ramek(rekordy, katalog, ile=12, seed=0):
         img = img.copy()
         for o in r.obiekty:
             x0, y0, x1, y1 = (int(v) for v in o.xyxy)
-            kol = (60, 220, 60) if "uprawa" in o.klasa else (230, 40, 160)
+            kol = (60, 220, 60) if "uprawa" in o.klasa else (230, 40, 160)   # BGR
             cv2.rectangle(img, (x0, y0), (x1, y1), kol, max(1, img.shape[1] // 400))
             cv2.putText(img, o.klasa[:18], (x0, max(12, y0 - 4)),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.4, kol, 1, cv2.LINE_AA)

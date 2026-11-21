@@ -22,6 +22,12 @@ Kafelek jest wtedy dobierany z telemetrii tak, zeby obejmowal ok. 1,5 m pola.
 Bez instalacji pakietu: python -m mission.detect_cli zdjecia/
 W binarce dodatkowo: fieldeye-detect dron FOLDER ... (symulowany dron z GPS)
                      fieldeye-detect porownaj OPRYSK PRAWDA (ocena namiarow)
+
+Petla main(), dla kazdego nowego zdjecia (FIFO):
+    kandydaci() -> gotowy() (zapisane do konca) -> telemetria .geojson (spray_map)
+    -> dobor kafelka do 1,5 m -> przetworz() (detekcja) -> mapa oprysku -> linia() w terminalu
+    -> zdjecie z ramkami w WYNIKI (zapis atomowy)
+Binarka: scripts/fieldeye_detect_main.py, build_binary.sh; opis: docs/fieldeye-detect.md.
 """
 import argparse
 import json
@@ -40,6 +46,12 @@ def domyslny_model():
 
     W binarce (PyInstaller): pierwszy z MODELE_OBOK_BINARKI lezacy obok pliku
     programu, a potem model wbudowany w binarke. Ze zrodel: model koncowy z repozytorium.
+
+    Zwraca:
+        Path, np. Path(".../models/weights/fieldeye_final.pt")
+
+    Uzywana w:
+        main() (ten plik)
     """
     if getattr(sys, "frozen", False):
         for katalog in (Path(sys.executable).resolve().parent, Path(getattr(sys, "_MEIPASS", "."))):
@@ -60,6 +72,16 @@ def kandydaci(katalog, znane):
     temu FIFO nie zalezy od tego, jak kamera nazywa pliki. Pomijane sa pliki
     ukryte i tymczasowe (np. '.img.jpg', '~img.jpg', 'img.jpg.part'), ktore
     zapisuja niektore programy przed zmiana nazwy na docelowa.
+
+    Argumenty:
+        katalog - folder zdjec
+        znane   - zbior nazw juz przetworzonych
+
+    Zwraca:
+        lista Path, od najstarszego
+
+    Uzywana w:
+        main() (ten plik)
     """
     out = []
     for p in Path(katalog).iterdir():
@@ -75,7 +97,17 @@ def kandydaci(katalog, znane):
 
 
 def kompletny(p):
-    """Czy plik zdjecia jest zapisany do konca (JPEG: znacznik FF D9, PNG: blok IEND)."""
+    """Czy plik zdjecia jest zapisany do konca (JPEG: znacznik FF D9, PNG: blok IEND).
+
+    Argumenty:
+        p - Path zdjecia
+
+    Zwraca:
+        bool (inne formaty zawsze True)
+
+    Uzywana w:
+        gotowy() (ten plik)
+    """
     try:
         with open(p, "rb") as f:
             f.seek(0, 2)
@@ -97,6 +129,18 @@ def gotowy(p, stan, min_stabilnosc=1.0, teraz=None):
 
     Chroni przed czytaniem zdjecia, ktore kamera albo kopiowanie dopiero zapisuje -
     takze wtedy, gdy zapis robi przerwy. stan: {nazwa: (rozmiar, od_kiedy)}.
+
+    Argumenty:
+        p              - Path zdjecia
+        stan           - slownik zapamietanych rozmiarow (zmieniany w miejscu)
+        min_stabilnosc - ile sekund rozmiar musi stac, np. 1.0
+        teraz          - czas (do testow) albo None = time.time()
+
+    Zwraca:
+        bool
+
+    Uzywana w:
+        main() (ten plik)
     """
     teraz = time.time() if teraz is None else teraz
     try:
@@ -111,13 +155,23 @@ def gotowy(p, stan, min_stabilnosc=1.0, teraz=None):
 
 
 def zbuduj(a):
-    """Detektor z argumentow: model (+ TTA) owiniety w kafelkowanie."""
+    """Detektor z argumentow: model (+ TTA) owiniety w kafelkowanie.
+
+    Argumenty:
+        a - opcje: a.model, a.prog, a.wejscie, a.urzadzenie, a.tta, a.kafelek, a.zakladka, a.atrapa
+
+    Zwraca:
+        TiledDetector(...) albo sam detektor przy --kafelek 0
+
+    Uzywana w:
+        main() (ten plik)
+    """
     from .detector import DummyDetector, TiledDetector, zbuduj_z_plikow
     if a.atrapa:
         det = DummyDetector()
     else:
         # z TTA nizszy prog na pojedynczym przebiegu: laczenie i tak przefiltruje
-        det = zbuduj_z_plikow([a.model], prog=min(a.prog, 0.05) if a.tta else a.prog,
+        det = zbuduj_z_plikow(a.model, prog=min(a.prog, 0.05) if a.tta else a.prog,
                               wejscie=a.wejscie, urzadzenie=a.urzadzenie, tta=a.tta)
     if a.kafelek == 0:
         return det
@@ -125,7 +179,14 @@ def zbuduj(a):
 
 
 def zamknij(det):
-    """Zamyka urzadzenie Hailo, jesli jest gdzies w srodku detektora."""
+    """Zamyka urzadzenie Hailo, jesli jest gdzies w srodku detektora.
+
+    Argumenty:
+        det - detektor (moze byc owiniety: Tiled -> TTA -> Hailo)
+
+    Uzywana w:
+        main() - na koncu (finally)
+    """
     while det is not None:
         if hasattr(det, "zamknij"):
             det.zamknij()
@@ -134,6 +195,20 @@ def zamknij(det):
 
 
 def przetworz(p, det, prog):
+    """Jedno zdjecie: wczytanie i detekcja.
+
+    Argumenty:
+        p    - Path zdjecia
+        det  - detektor z zbuduj()
+        prog - prog pewnosci, np. 0.15
+
+    Zwraca:
+        (img, r) - obraz BGR i slownik: plik, czas, szer, wys, chwasty (liczba), sekundy,
+        wykrycia [[x0, y0, x1, y1, pewnosc], ...] od najpewniejszego
+
+    Uzywana w:
+        main() (ten plik)
+    """
     import cv2
     img = cv2.imread(str(p))
     if img is None:
@@ -149,6 +224,18 @@ def przetworz(p, det, prog):
 
 
 def linia(r, szczegoly=0):
+    """Jedna linia wyniku do terminala, np. "[14:29:01] IMG_0001.jpg  4624x3472  chwasty:   12   max 0.81  0.84 s".
+
+    Argumenty:
+        r         - slownik z przetworz()
+        szczegoly - ile najpewniejszych wykryc dopisac pod spodem
+
+    Zwraca:
+        str
+
+    Uzywana w:
+        main() (ten plik)
+    """
     maks = f"max {r['wykrycia'][0][4]:.2f}" if r["wykrycia"] else ""
     s = (f"[{r['czas'][11:]}] {r['plik']:<28} {r['szer']}x{r['wys']:<6} "
          f"chwasty: {r['chwasty']:>4}   {maks:<9} {r['sekundy']:.2f} s")
@@ -158,6 +245,17 @@ def linia(r, szczegoly=0):
 
 
 def main(argv=None):
+    """Caly program fieldeye-detect: opcje -> detektor -> petla po nowych zdjeciach -> podsumowanie.
+
+    Argumenty:
+        argv - lista opcji albo None (sys.argv); opisy opcji w --help
+
+    Zwraca:
+        0 = OK, 2 = zle opcje (brak modelu, zly format, folder wynikow = folder zdjec, ...)
+
+    Uzywana w:
+        python -m mission.detect_cli, scripts/fieldeye_detect_main.py (binarka), fieldeye-detect.sh
+    """
     ap = argparse.ArgumentParser(prog="fieldeye-detect", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("katalog", help="katalog ze zdjeciami (np. ten, do ktorego zapisuje kamera)")

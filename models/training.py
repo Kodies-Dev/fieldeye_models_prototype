@@ -1,7 +1,17 @@
-"""Trening trzyetapowy. Opakowanie ultralytics - cala logika etapow jest tutaj.
+"""Trening etap po etapie wedlug planu. Opakowanie ultralytics - cala logika etapow jest tutaj.
 
 UWAGA: ten modul wymaga `pip install ultralytics`. Bez niego reszta pakietu
-(plan, kontrola danych, porownanie modeli) dziala normalnie.
+(plan, kontrola danych) dziala normalnie.
+
+Model koncowy: jeden etap z plan_dane_ewis1_bt.json (scripts/final_model.sh, krok 2):
+    python -m models.cli trenuj --plan plan_dane_ewis1_bt.json -o modele_dane_ewis1_bt
+
+Wynik w folderze -o:
+    plan.json             - plan, z ktorym uczono
+    historia.json         - etapy: wagi, czas, parametry
+    trening/<etap>/       - wszystko od ultralytics: wykresy, results.csv, weights/best.pt i last.pt
+    model.pt              - kopia best.pt ostatniego etapu = model koncowy
+                            (final_model.sh kopiuje go do models/weights/fieldeye_final.pt)
 """
 
 import json
@@ -17,6 +27,16 @@ log = logging.getLogger(__name__)
 
 
 def _yolo():
+    """Importuje klase YOLO z ultralytics; bez pakietu - czytelny blad z komenda instalacji.
+
+    Po co: ultralytics jest ciezki i potrzebny tylko do treningu - reszta pakietu dziala bez niego.
+
+    Zwraca:
+        klasa ultralytics.YOLO
+
+    Uzywana w:
+        trenuj_etap() (ten plik)
+    """
     try:
         from ultralytics import YOLO
     except ImportError as e:
@@ -30,7 +50,24 @@ def _yolo():
 
 
 def trenuj_etap(etap, wagi_startowe, plan, kontroluj=True):
-    """Jeden etap treningu. Zwraca sciezke do najlepszych wag."""
+    """Jeden etap treningu. Zwraca sciezke do najlepszych wag.
+
+    Po co: kontrola danych, wywolanie model.train() ultralytics z parametrami z planu
+           i znalezienie pliku best.pt (wagi z najlepszej epoki na walidacji).
+
+    Argumenty:
+        etap          - Stage (dane, epoki, lr0, wejscie, ...)
+        wagi_startowe - od czego zaczac, np. "yolov8n.pt" albo best.pt poprzedniego etapu
+        plan          - TrainingPlan (batch, cierpliwosc, seed, optymalizator, urzadzenie, wyjscie)
+        kontroluj     - True = najpierw sprawdz_dane(); blad danych = koniec bez treningu
+
+    Zwraca:
+        (best, czas) - Path do weights/best.pt i czas treningu w sekundach,
+        np. (Path(".../modele_dane_ewis1_bt/trening/dane-ewis1-bt/weights/best.pt"), 14400.0)
+
+    Uzywana w:
+        trenuj() (ten plik)
+    """
     if kontroluj:
         ok, problemy, info = sprawdz_dane(etap.dane)
         for p in problemy:
@@ -79,7 +116,22 @@ def trenuj_etap(etap, wagi_startowe, plan, kontroluj=True):
 
 
 def trenuj(plan, kontroluj=True):
-    """Caly plan po kolei. Kazdy etap startuje z wag poprzedniego."""
+    """Caly plan po kolei. Kazdy etap startuje z wag poprzedniego.
+
+    Po co: glowna funkcja treningu - na koncu kopiuje najlepsze wagi ostatniego etapu
+           do <wyjscie>/model.pt (to jest plik modelu koncowego).
+
+    Argumenty:
+        plan      - TrainingPlan (plan.wyjscie = folder wynikow, np. "modele_dane_ewis1_bt")
+        kontroluj - True = kontrola danych przed kazdym etapem
+
+    Zwraca:
+        (model_pt, historia) - Path(".../model.pt") i lista slownikow etapow
+        (etap, wagi, czas_min + pola etapu); zapisuje tez plan.json i historia.json
+
+    Uzywana w:
+        models/cli.py cmd_trenuj() - komenda "trenuj" w scripts/final_model.sh, krok 2
+    """
     wyjscie = Path(plan.wyjscie)
     wyjscie.mkdir(parents=True, exist_ok=True)
     plan.zapisz(wyjscie / "plan.json")
@@ -99,25 +151,3 @@ def trenuj(plan, kontroluj=True):
     return koncowe, historia
 
 
-def ablacja(plan, kontroluj=True):
-    """Czy etapowanie faktycznie pomaga - porownanie z treningiem jednoetapowym.
-
-    Trenuje osobno sam ostatni etap (od wag COCO) i porownuje z pelnym planem.
-    Bez tego nie wiadomo, czy trzy etapy cokolwiek daly - a to jest pytanie,
-    ktore padnie przy omawianiu wynikow.
-    """
-    from .plan import TrainingPlan
-
-    log.info("--- wariant A: pelny plan (%d etapow)", len(plan.etapy))
-    model_a, hist_a = trenuj(plan, kontroluj)
-
-    ostatni = plan.etapy[-1]
-    plan_b = TrainingPlan(model_bazowy=plan.model_bazowy, batch=plan.batch,
-                          cierpliwosc=plan.cierpliwosc, urzadzenie=plan.urzadzenie,
-                          wyjscie=str(Path(plan.wyjscie) / "ablacja"), seed=plan.seed,
-                          etapy=[ostatni])
-    log.info("--- wariant B: tylko ostatni etap, od wag bazowych")
-    model_b, hist_b = trenuj(plan_b, kontroluj)
-
-    return {"pelny_plan": str(model_a), "tylko_ostatni_etap": str(model_b),
-            "historia_a": hist_a, "historia_b": hist_b}

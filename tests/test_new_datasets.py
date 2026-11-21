@@ -1,11 +1,11 @@
-"""Testy nowych zbiorow: EWIS1 (Pascal VOC, dron 5 m) i PhenoBench (maski instancji 16-bit).
+"""Testy zbioru EWIS1 (Pascal VOC, dron 5 m).
 
 Po co: EWIS1 jest w treningu i tescie modelu koncowego, a jego etykiety maja pulapki
 (zamienione wymiary w XML, ramki dla obroconego zdjecia, inna nazwa pliku w XML).
 Testy sprawdzaja adaptery na malych sztucznych kopiach zbiorow oraz odlozenie dnia
 do testu (--ewis1-test-dni, krok 1 w final_model.sh).
 
-Testowane: normalization/adapters.py (ewis1, phenobench), normalization/build.py (zbuduj, main),
+Testowane: normalization/adapters.py (ewis1), normalization/build.py (zbuduj, main),
            normalization/taxonomy.py (Taxonomy), models/evaluation.py (ocen_wedlug_grup).
 
     python -m pytest tests/test_new_datasets.py -q
@@ -21,7 +21,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from normalization.adapters import ewis1, phenobench  # noqa: E402
+from normalization.adapters import ewis1  # noqa: E402
 from normalization.build import zbuduj  # noqa: E402
 from normalization.taxonomy import Taxonomy  # noqa: E402
 
@@ -43,7 +43,7 @@ def tax():
         Taxonomy - np. tax.klucz("sorghum") -> "sorghum_bicolor"
 
     Uzywana w:
-        testach adapterow EWIS1 i PhenoBench
+        testach adaptera EWIS1
     """
     return Taxonomy()
 
@@ -61,7 +61,7 @@ def _ewis1(kat):
         nic - zapisuje pliki na dysk
 
     Uzywana w:
-        test_ewis1_bez_sorgo_i_klasy(), test_budowa_obu_zbiorow_w_trybie_chwastow(),
+        test_ewis1_bez_sorgo_i_klasy(), test_budowa_ewis1_w_trybie_chwastow(),
         test_ewis1_odlozony_dzien_do_testu(), test_budowa_z_odlozonym_dniem_i_ocena_wedlug_dni()
     """
     for k in ("bounding_boxes", "images", "masks", "additional_images"):
@@ -119,66 +119,8 @@ def test_sorgo_to_uprawa_a_sorgo_aleppo_to_chwast(tax):
     assert tax.klucz("crop") == "uprawa_inna"
 
 
-def _phenobench(kat):
-    """train/ i val/ z images, semantics, plant_instances (16-bit); test/ bez etykiet.
-
-    Po co: miniaturowy PhenoBench - 3 zdjecia z burakiem, chwastem i chwastem przy krawedzi.
-
-    Argumenty:
-        kat - Path folderu, w ktorym powstanie zbior, np. tmp_path / "p"
-
-    Zwraca:
-        nic - zapisuje pliki na dysk
-
-    Uzywana w:
-        test_phenobench_ramki_z_instancji(), test_budowa_obu_zbiorow_w_trybie_chwastow()
-    """
-    for czesc in ("train", "val", "test"):
-        for k in (("images",) if czesc == "test" else ("images", "semantics", "plant_instances")):
-            (kat / czesc / k).mkdir(parents=True)
-    rng = np.random.default_rng(1)
-    for czesc, n in (("train", 2), ("val", 1)):
-        for i in range(n):
-            nazwa = f"05-15_{czesc}{i:04d}.png"
-            # rozne zdjecia - identyczne odrzucilaby deduplikacja
-            cv2.imwrite(str(kat / czesc / "images" / nazwa), rng.integers(0, 255, (128, 128, 3), dtype=np.uint8))
-            sem = np.zeros((128, 128), np.uint16)
-            ins = np.zeros((128, 128), np.uint16)
-            sem[10:30, 10:30], ins[10:30, 10:30] = 1, 300           # burak
-            sem[50:60, 50:60], ins[50:60, 50:60] = 2, 301           # chwast
-            sem[0:8, 100:120], ins[0:8, 100:120] = 4, 302           # chwast przy krawedzi (partial)
-            cv2.imwrite(str(kat / czesc / "semantics" / nazwa), sem)
-            cv2.imwrite(str(kat / czesc / "plant_instances" / nazwa), ins)
-    cv2.imwrite(str(kat / "test" / "images" / "phenoBench_00000.png"), np.zeros((128, 128, 3), np.uint8))
-
-
-def test_phenobench_ramki_z_instancji(tmp_path, tax):
-    """Adapter PhenoBench: ramki z masek instancji, test bez etykiet pominiety.
-
-    Po co: PhenoBench nie ma ramek, tylko maski - ramka musi objac cala instancje.
-
-    Argumenty:
-        tmp_path - fixture pytest: folder na miniaturowy PhenoBench
-        tax      - fixture: taksonomia klas
-
-    Zwraca:
-        nic - pytest sprawdza asserty
-
-    Uzywana w:
-        pytest (python -m pytest tests)
-    """
-    _phenobench(tmp_path / "p")
-    r = phenobench(tmp_path / "p", tax)
-    assert len(r) == 3                                                     # train 2 + val 1, test pominiety
-    ob = sorted(r[0].obiekty, key=lambda o: o.xyxy[0])
-    assert [o.klasa for o in ob] == ["beta_vulgaris", "chwast_inny", "chwast_inny"]
-    assert ob[0].xyxy == [10, 10, 30, 30]
-    assert all(x.domena == "uav" and x.wyczerpujace for x in r)
-    assert r[0].grupa.startswith("phenobench_train_05-15")
-
-
-def test_budowa_obu_zbiorow_w_trybie_chwastow(tmp_path):
-    """Cala budowa EWIS1 + PhenoBench w trybie "chwasty", ze skala EWIS1 x0.5.
+def test_budowa_ewis1_w_trybie_chwastow(tmp_path):
+    """Cala budowa EWIS1 w trybie "chwasty", ze skala x0.5.
 
     Po co: jak krok 1 w final_model.sh - skala zmniejsza zdjecie, a uprawa staje sie tlem.
 
@@ -192,14 +134,13 @@ def test_budowa_obu_zbiorow_w_trybie_chwastow(tmp_path):
         pytest (python -m pytest tests)
     """
     _ewis1(tmp_path / "e")
-    _phenobench(tmp_path / "p")
-    info = zbuduj({"ewis1": tmp_path / "e", "phenobench": tmp_path / "p"}, tmp_path / "zb",
+    info = zbuduj({"ewis1": tmp_path / "e"}, tmp_path / "zb",
                   tryb_klas="chwasty", proporcje=(1.0, 0.0, 0.0), skale={"ewis1": 0.5},
                   udzial_pustych=1.0)
     assert not info["nierozpoznane_etykiety"]
     ds = tmp_path / "zb" / "dataset"
     obrazy = list((ds / "images" / "train").glob("*.jpg"))
-    assert len(obrazy) == 5                                                # 2 kukurydza + 3 PhenoBench
+    assert len(obrazy) == 2                                                # 2 zdjecia kukurydzy
     wm = [p for p in obrazy if "ewis1" in p.name]
     assert cv2.imread(str(wm[0])).shape == (150, 200, 3)                   # 400x300 * 0,5
     etykiety = (ds / "labels" / "train" / (wm[0].stem + ".txt")).read_text().split()
