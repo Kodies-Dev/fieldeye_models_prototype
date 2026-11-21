@@ -21,9 +21,33 @@ import numpy as np
 log = logging.getLogger(__name__)
 
 
-# Obraz w skali szarosci, zmniejszony do max_wymiar px. Zwraca tez wspolczynnik
-# zmniejszenia k - potrzebny, zeby wspolrzedne punktow przeliczyc z powrotem.
+
 def _szary(img, max_wymiar):
+    """Przygotowuje obraz do szukania punktow: szarosc i zmniejszenie.
+
+        Po co: ocena porownuje mozaike z oryginalem przez punkty charakterystyczne
+        (SIFT / ORB), a te szukaja zmian jasnosci - kolor nie jest potrzebny.
+        Mozaika i oryginal maja po kilka tysiecy px; zmniejszenie do max_wymiar
+        przyspiesza szukanie punktow wielokrotnie, a do oceny wystarcza.
+        Nigdy nie powieksza (k najwyzej 1). INTER_AREA - przy zmniejszaniu usrednia
+        piksele, bez mory na rzedach uprawy.
+
+        Argumenty:
+            img        - obraz BGR (mozaika albo wycinek oryginalu)
+            max_wymiar - najwiekszy dozwolony dluzszy bok w px (domyslnie 1600 z ocen())
+
+        Zwraca:
+            (g, k):
+              g - obraz szary (uint8), dluzszy bok najwyzej max_wymiar
+              k - wspolczynnik zmniejszenia (1.0 = bez zmian), np. mozaika
+                  2163 x 1552 przy 1600 -> k = 0.74
+              k jest potrzebne, zeby wspolrzedne punktow znalezionych na
+              zmniejszonym obrazie przeliczyc z powrotem na pelny rozmiar (/ k).
+
+        Uzywana w:
+            ocen() (evaluation.py) - dla mozaiki i dla wycinka oryginalu;
+            potem: src = punkty_mozaiki / km, dst = punkty_oryginalu / ko
+        """
     k = min(1.0, max_wymiar / max(img.shape[:2]))
     g = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     if k < 1.0:
@@ -32,10 +56,32 @@ def _szary(img, max_wymiar):
 
 
 def _pary_wzajemne(d1, d2, norm):
-    """Test proporcji + dopasowanie wzajemne: para musi byc najlepsza
-    w obie strony. Bez tego przy powtarzalnych rzedach wiele punktow
-    mozaiki trafia w jeden punkt oryginalu i RANSAC wybiera model
-    zdegenerowany (sciagniecie wszystkiego do jednego punktu)."""
+    """Dopasowuje punkty mozaiki do punktow oryginalu - tylko pary pewne w obie strony.
+
+    Po co: rzedy uprawy sa powtarzalne, wiec wiele punktow mozaiki wyglada
+    jak jeden i ten sam punkt oryginalu. Bez kontroli kilkadziesiat punktow
+    mozaiki "trafia" w jeden punkt oryginalu, a RANSAC wybiera wtedy model
+    zdegenerowany - sciagniecie calej mozaiki do jednego punktu (skala ~0).
+    Dwa sita:
+        1. test proporcji (0.8) - najlepszy kandydat wyraznie lepszy od drugiego
+        2. wzajemnosc - punkt A mozaiki wybral B w oryginale I punkt B oryginalu,
+           szukajac w mozaice, tez wybral A (cross-check)
+    Test proporcji 0.8 jest lagodniejszy niz 0.75 w skladaczu, bo drugie sito
+    i tak wycina niejednoznaczne pary.
+
+    Argumenty:
+        d1   - deskryptory punktow mozaiki
+        d2   - deskryptory punktow (wycinka) oryginalu
+        norm - jak porownywac: cv2.NORM_L2 (SIFT) albo cv2.NORM_HAMMING (ORB)
+
+    Zwraca:
+        lista cv2.DMatch - tylko pary wzajemne; queryIdx = numer punktu mozaiki,
+        trainIdx = numer punktu oryginalu
+
+    Uzywana w:
+        ocen() (evaluation.py) - najpierw dla SIFT, gdy par < 40 - jeszcze dla ORB;
+        wygrywa zestaw z wieksza liczba par
+    """
     bf = cv2.BFMatcher(norm)
     # najlepsze dopasowanie w przeciwna strone: punkt oryginalu -> punkt mozaiki
     wstecz = {m.queryIdx: m.trainIdx for m in bf.match(d2, d1)}
@@ -49,7 +95,30 @@ def _pary_wzajemne(d1, d2, norm):
 
 
 def _obszar_lotu(prawda, W, H, zapas=0.05):
-    """Prostokat obejmujacy wszystkie kadry, z niewielkim zapasem."""
+    """Wyznacza prostokat oryginalu, nad ktorym faktycznie przelecial dron.
+
+        Po co: ocena porownuje mozaike tylko z PRZELECIANYM fragmentem pola.
+        Na calym oryginale powtarzalne rzedy uprawy daja mnostwo niejednoznacznych
+        punktow i test proporcji odrzucilby prawie wszystkie pary; poza tym
+        fragmentow, nad ktorymi dron nie lecial, i tak nie ma na mozaice.
+        Jak liczy: wszystkie rogi wszystkich kadrow z prawda.json -> najmniejsze
+        i najwieksze x, y (obwiednia) -> poszerzenie o zapas z kazdej strony ->
+        przyciecie do granic obrazu.
+
+        Argumenty:
+            prawda - slownik z prawda.json (uzywa: prawda["kadry"][...]["naroza"])
+            W, H   - szerokosc i wysokosc oryginalu (px)
+            zapas  - poszerzenie z kazdej strony jako ulamek rozmiaru obszaru (0.05 = 5%)
+
+        Zwraca:
+            (x0, y0, x1, y1) - liczby calkowite, prostokat w px oryginalu
+            np. lot z zakladki 1 (55 kadrow = 220 rogow, pole 2400 x 1600):
+                rogi od (45, 28) do (2243, 1551) + 5% -> (0, 0, 2353, 1600)
+
+        Uzywana w:
+            ocen() (evaluation.py) - wycinek = oryginal[y0:y1, x0:x1]; punkty wycinka
+            przesuwane potem o (x0, y0) z powrotem do ukladu oryginalu
+        """
     pts = np.array([p for k in prawda["kadry"] for p in k["naroza"]], float)
     x0, y0 = pts.min(axis=0)
     x1, y1 = pts.max(axis=0)
@@ -59,9 +128,55 @@ def _obszar_lotu(prawda, W, H, zapas=0.05):
 
 
 def ocen(mozaika, oryginal, prawda=None, outdir=None, max_wymiar=1600):
-    # Gdy znamy prawde, dopasowujemy tylko do przeleconego fragmentu.
-    # Na calym oryginale powtarzalne rzedy uprawy daja mnostwo niejednoznacznych
-    # deskryptorow i test proporcji odrzuca prawie wszystkie pary.
+    """Sprawdza, jak dobrze mozaika odtwarza oryginalne pole.
+
+        Po co: zakladka 3 sklada kadry z symulacji, a my znamy oryginal, z ktorego
+        je wycieto - mozna wiec zmierzyc jakosc skladania. Mozaika ma jednak wlasny
+        uklad wspolrzednych, wiec nie da sie porownac jej piksel w piksel - najpierw
+        trzeba ja do oryginalu dopasowac.
+        Kroki:
+            1. z prawdy: tylko przeleciany fragment oryginalu (_obszar_lotu)
+            2. oba obrazy szare i zmniejszone do max_wymiar (_szary)
+            3. punkty SIFT (8000), pary wzajemne (_pary_wzajemne); gdy < 40 par -
+               drugi raz ORB o niskim progu; wygrywa zestaw z wieksza liczba par
+            4. RANSAC: przeksztalcenie mozaika -> oryginal (obrot + skala + przesuniecie);
+               skala < 0.2 = dopasowanie zdegenerowane -> ok False
+            5. mozaika przeniesiona do ukladu oryginalu (warpAffine) + maski:
+               gdzie sa dane mozaiki (m_moz) i gdzie lecial dron (m_lot, z rogow kadrow)
+            6. miary na czesci wspolnej: pokrycie, sredni blad jasnosci, PSNR
+            7. opcjonalnie zapis podgladow do outdir
+
+        Argumenty:
+            mozaika    - mozaika (BGR, uint8) z GlobalStitcher / Detail / Basic
+            oryginal   - zdjecie pola, z ktorego wycieto kadry (BGR)
+            prawda     - slownik z prawda.json; None = porownanie z calym oryginalem
+                         (gorzej - powtarzalne rzedy, brak maski przelotu)
+            outdir     - folder na podglady i ocena.json; None = bez zapisu
+            max_wymiar - do ilu px zmniejszac obrazy przy szukaniu punktow (1600)
+
+        Zwraca:
+            slownik:
+              ok          - True / False (False + "powod", gdy nie da sie dopasowac)
+              zgodne_pary - ile par potwierdza dopasowanie (wiarygodnosc)
+              skala       - ~1.0 = mozaika w skali oryginalu
+              pokrycie    - jaka czesc przelecianego terenu jest na mozaice (0-1)
+              blad_sredni - srednia roznica jasnosci w czesci wspolnej (0-255)
+              psnr_db     - zgodnosc pikseli w dB; powyzej ~25 dobrze
+              werdykt     - napis z werdykt()
+            np. lot z zakladki 1 (55 kadrow, global):
+              {"ok": True, "zgodne_pary": 235, "skala": 1.0185, "pokrycie": 0.9991,
+               "blad_sredni": 14.74, "psnr_db": 23.27,
+               "werdykt": "DOBRZE - drobne niedokladnosci na szwach"}
+        Zapisuje w outdir (gdy podany):
+            ocena_nalozenie.jpg - przygaszony oryginal z nalozona mozaika
+            ocena_roznica.jpg   - mapa roznic (niebieski = zgodnie, czerwony = duza roznica)
+            ocena.json          - slownik wyniku
+
+        Uzywana w:
+            app.py, zakladka 3 (linia 424) - ocena po skladaniu; liczby i werdykt
+                                             pod mozaika, podglady w zakladce
+            cli.py - polecenie ocen
+        """
     ox, oy = 0, 0
     wycinek = oryginal
     if prawda and prawda.get("kadry"):
@@ -167,9 +282,33 @@ def ocen(mozaika, oryginal, prawda=None, outdir=None, max_wymiar=1600):
 
 
 def werdykt(zgodne, skala, pokrycie, psnr):
-    """Werdykt opiera sie glownie na skali i PSNR. Liczba par mowi tylko,
-    na ile ocena jest pewna - mala mozaika albo powtarzalne rzedy daja
-    malo par nawet przy poprawnym zlozeniu."""
+      """Zamienia liczby z oceny na krotki napis dla czlowieka.
+
+    Po co: zakladka 3 pokazuje pod mozaika jedno zdanie zamiast samych liczb.
+    Werdykt opiera sie glownie na skali i PSNR. Liczba par mowi tylko, na ile
+    ocena jest pewna - mala mozaika albo powtarzalne rzedy daja malo par nawet
+    przy poprawnym zlozeniu.
+    Kolejnosc sprawdzania (pierwszy pasujacy wygrywa):
+        par < 8 albo skala poza 0.85-1.15 -> ZLE
+        pokrycie < 70%                    -> CZESCIOWO
+        PSNR < 20 dB                      -> SLABO
+        PSNR 20-25 dB                     -> DOBRZE
+        PSNR >= 25 dB                     -> BARDZO DOBRZE
+    Przy mniej niz 20 parach dopisek "(niska pewnosc oceny - malo par)".
+
+    Argumenty:
+        zgodne   - liczba par potwierdzajacych dopasowanie (z ocen())
+        skala    - skala mozaiki wzgledem oryginalu (~1.0 = dobrze)
+        pokrycie - czesc przelecianego terenu na mozaice (0-1)
+        psnr     - zgodnosc pikseli w dB
+
+    Zwraca:
+        str, np. "DOBRZE - drobne niedokladnosci na szwach"
+        (lot z zakladki 1: 235 par, skala 1.02, pokrycie 99.9%, PSNR 23.3 dB)
+
+    Uzywana w:
+        ocen() (evaluation.py) - pole "werdykt" w wyniku; wyswietlane w zakladce 3
+    """
     if zgodne < 8 or not (0.85 < skala < 1.15):
         return "ZLE - mozaika nie odpowiada oryginalowi"
     dopisek = "  (niska pewnosc oceny - malo par)" if zgodne < 20 else ""

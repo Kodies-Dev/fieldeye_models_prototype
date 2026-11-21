@@ -7,8 +7,13 @@ Zakladki:
   1. Rozklad zdjecia  - tniesz jedno zdjecie na kadry, tak jakby robil je dron
   2. Kadry            - przegladasz i pobierasz wyciete kadry
   3. Skladanie        - symulacja laczenia kadr po kadrze, pobieranie wyniku
-"""
+  4. Lot z detekcja  - symulowany lot z wykrywaniem chwastow i mozaika z chwastami
 
+Jak dziala Streamlit: caly ten plik wykonuje sie od gory do dolu przy KAZDYM
+kliknieciu lub ruchu suwaka. Dlatego wyniki, ktore maja przetrwac miedzy
+kliknieciami (kadry, mozaika), trzymamy w st.session_state - slowniku, ktory
+Streamlit zachowuje przez cala sesje przegladarki.
+"""
 import io
 import json
 import shutil
@@ -34,10 +39,7 @@ from mission.detector import DummyDetector, HailoDetector, TiledDetector, YoloDe
 from models.evaluation import pr_przy_progach
 from models.plan import katalog_etykiet
 
-# Jak dziala Streamlit: caly ten plik wykonuje sie od gory do dolu przy KAZDYM
-# kliknieciu lub ruchu suwaka. Dlatego wyniki, ktore maja przetrwac miedzy
-# kliknieciami (kadry, mozaika), trzymamy w st.session_state - slowniku, ktory
-# Streamlit zachowuje przez cala sesje przegladarki.
+
 st.set_page_config(page_title="FIELDEYE - symulator lotu", layout="wide")
 
 ROZSZERZENIA = {".jpg", ".jpeg", ".png", ".tif", ".tiff"}
@@ -48,8 +50,7 @@ PRESETY = {
                           szum=0.0, winieta=0.0, jitter=0.0),
     "Realistyczny dron": dict(obrot=3.0, skala=0.03, ekspozycja=0.05, rozmycie=0.1,
                               szum=2.0, winieta=0.3, jitter=0.1),
-    # na granicy mozliwosci metody - przy mocniejszych zakloceniach kadry
-    # zaczynaja odpadac z mozaiki (widac to w metryce "W mozaice")
+    #raczej dla zabawy
     "Trudne warunki": dict(obrot=6.0, skala=0.05, ekspozycja=0.07, rozmycie=0.25,
                            szum=4.0, winieta=0.35, jitter=0.12),
 }
@@ -57,24 +58,74 @@ PRESETY = {
 
 # ---------------- stan sesji ----------------
 
-# Kazda karta przegladarki dostaje wlasny katalog na pliki - dwie osoby
-# korzystajace z aplikacji naraz nie nadpisza sobie kadrow.
+# kazda sesja przegladarki dostaje swoj wlasny katalog na pliki
 def katalog_roboczy():
-    """Osobny katalog tymczasowy na sesje przegladarki."""
+    """Zwraca osobny folder tymczasowy dla tej sesji przegladarki.
+
+    Po co: kazda karta przegladarki (i kazda osoba wchodzaca przez Network URL)
+    dostaje wlasny folder, wiec dwie osoby korzystajace z aplikacji naraz nie
+    nadpisza sobie kadrow. Folder powstaje raz na sesje (tempfile.mkdtemp,
+    nazwa fieldeye_ + losowa koncowka), sciezka jest trzymana w session_state.
+    Aplikacja go nie usuwa; F5 = nowa sesja = nowy folder.
+
+    Argumenty:
+        brak
+
+    Zwraca:
+        Path folderu, np. /var/folders/.../T/fieldeye_a8k2j3x1 (Mac), /tmp/fieldeye_... (Linux)
+
+    Uzywana w:
+        zakladka 1 - folder "symulacja" (kadry, prawda.json, podglad trasy)
+        zakladka 3 - folder "wgrane" (wlasne zdjecia / ZIP) i "ocena" (podglady oceny)
+        zakladka 4 - folder "lot" (kadry lotu z detekcja)
+    """
     if "workdir" not in st.session_state:
-        st.session_state.workdir = Path(tempfile.mkdtemp(prefix="fieldeye_"))
+        st.session_state.workdir = Path(tempfile.mkdtemp(prefix="fieldeye_"))#koncowka random
     return st.session_state.workdir
 
 
-# Wywolywane przez selectbox (on_change) - wpisuje wartosci zestawu do
-# session_state, a suwaki z tymi samymi kluczami (key=...) je pokazuja.
+
+# przesuwanie wszystkich suwakow gdy wybrierzemy zestaw zaklocen presety
 def ustaw_preset():
+    """Przestawia wszystkie suwaki zaklocen na wartosci wybranego zestawu.
+
+    Po co: zeby nie ustawiac 7 suwakow recznie. Wywolywana przez selectbox
+    "Zestaw" (on_change) PRZED ponownym wykonaniem skryptu - wtedy zaden suwak
+    jeszcze nie istnieje i wolno zmienic jego wartosc w session_state.
+    Suwaki maja te same klucze (key="obrot" itd.), wiec od razu pokazuja nowe liczby.
+
+    Argumenty:
+        brak (nazwa zestawu z st.session_state.preset)
+
+    Zwraca:
+        nic; ustawia st.session_state: obrot, skala, ekspozycja, rozmycie,
+        szum, winieta, jitter (np. "Trudne warunki" -> obrot 6.0, szum 4.0 ...)
+
+    Uzywana w:
+        zakladka 1 - selectbox "Zestaw" (on_change=ustaw_preset)
+    """
     for k, v in PRESETY[st.session_state.preset].items():
         st.session_state[k] = v
 
 
 # setdefault - ustawia wartosc tylko przy pierwszym uruchomieniu, nie nadpisuje zmian
 def inicjuj_suwaki():
+    """Ustawia wartosci startowe suwakow zaklocen (zestaw "Realistyczny dron").
+
+    Po co: suwaki zaklocen nie maja podanej wartosci domyslnej, tylko klucz -
+    bez tego startowalyby od minimum (0). setdefault wpisuje wartosc tylko,
+    gdy klucza jeszcze nie ma, czyli przy pierwszym uruchomieniu; pozniejsze
+    przebiegi (rerun) nie cofaja tego, co ustawil uzytkownik.
+
+    Argumenty:
+        brak
+
+    Zwraca:
+        nic; ustawia (tylko raz) st.session_state: preset + 7 wartosci zaklocen
+
+    Uzywana w:
+        poczatek skryptu - wolana przy kazdym przebiegu, przed narysowaniem zakladek
+    """
     for k, v in PRESETY["Realistyczny dron"].items():
         st.session_state.setdefault(k, v)
     st.session_state.setdefault("preset", "Realistyczny dron")
@@ -82,28 +133,96 @@ def inicjuj_suwaki():
 
 # ---------------- pomocnicze ----------------
 
-# OpenCV trzyma kolory jako BGR, przegladarka oczekuje RGB - bez tego niebo byloby pomaranczowe
+# OpenCV trzyma kolory jako BGR, przegladarka oczekuje RGB
 def bgr_na_rgb(img):
-    return cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    """Zamienia kolejnosc kanalow kolorow z BGR (OpenCV) na RGB (przegladarka).
+
+    Po co: OpenCV trzyma piksel jako B, G, R, a Streamlit, PIL i przegladarka
+    oczekuja R, G, B. Bez zamiany czerwony i niebieski zamieniaja sie miejscami
+    (brazowa gleba wyglada na szaroniebieska). cv2.imwrite nie potrzebuje zamiany.
+
+    Argumenty:
+        img - obraz OpenCV (BGR, uint8), ksztalt (h, w, 3)
+
+    Zwraca:
+        nowy obraz RGB, ten sam ksztalt; oryginal bez zmian
+
+    Uzywana w:
+        kazde st.image w zakladkach 1-4, gif_z_klatek(), gif_lotu()
+    """
+    return cv2.cvtColor(img, cv2.COLOR_BGR2RGB) # zamiana kolejnosci kanalow BGR -> RGB
 
 
 # plik z uploadu to bajty w pamieci - imdecode dekoduje je bez zapisu na dysk
 def wczytaj_z_uploadu(plik):
+    """Zamienia wgrany plik na obraz OpenCV - bez zapisu na dysk.
+
+    Po co: plik z st.file_uploader jest tylko w pamieci, a cv2.imread potrzebuje
+    sciezki na dysku. Bajty pliku (skompresowany JPG/PNG) -> tablica uint8
+    (np.frombuffer) -> dekodowanie (cv2.imdecode) jak przy imread.
+    IMREAD_COLOR - zawsze 3 kanaly (szary rozszerzony, przezroczystosc PNG odrzucona).
+
+    Argumenty:
+        plik - UploadedFile z st.file_uploader
+
+    Zwraca:
+        obraz BGR (h, w, 3), uint8; None - gdy plik nie jest obrazem
+        np. JPG 2 MB -> 3000 x 4000 x 3 = 36 MB pikseli
+
+    Uzywana w:
+        zakladka 1 - "Rozloz zdjecie"
+        zakladka 4 - pole "Wgraj zdjecie"
+    """
     dane = np.frombuffer(plik.getvalue(), np.uint8)
     return cv2.imdecode(dane, cv2.IMREAD_COLOR)
 
-
+#obraz mam mieć najwyżej max_wymiar pikeseli dluzszy bok
 def zmniejsz(img, max_wymiar):
-    if max_wymiar and max(img.shape[:2]) > max_wymiar:
-        k = max_wymiar / max(img.shape[:2])
+    """Zmniejsza obraz tak, zeby dluzszy bok mial najwyzej max_wymiar px.
+
+    Po co: zdjecia z drona maja ponad 4000 px - zmniejszenie przyspiesza ciecie,
+    skladanie i ocene kilkukrotnie. Proporcje zostaja (ta sama skala k w poziomie
+    i w pionie), obraz nigdy nie jest powiekszany. INTER_AREA - przy zmniejszaniu
+    usrednia piksele, bez mory na rzedach uprawy.
+
+    Argumenty:
+        img        - obraz BGR
+        max_wymiar - najwiekszy dozwolony dluzszy bok w px; 0 / None = bez zmian
+
+    Zwraca:
+        obraz zmniejszony albo ten sam, gdy juz jest mniejszy
+        np. 4000 x 3000 przy 2400 -> k = 0.6 -> 2400 x 1800
+
+    Uzywana w:
+        zakladka 1 - zrodlo po wczytaniu (suwak "Zmniejsz zrodlo do", dom. 2400)
+        zakladka 4 - para [kadr | wykryte chwasty] do animacji GIF (do 1600 px)
+    """
+    if max_wymiar and max(img.shape[:2]) > max_wymiar: #jezeli obraz a raczej jego najdluzszy bok ma wiecej niz max wymiar
+        k = max_wymiar / max(img.shape[:2]) #o ile przeskalowac
         img = cv2.resize(img, None, fx=k, fy=k, interpolation=cv2.INTER_AREA)
     return img
 
 
-# ZIP budowany w pamieci (BytesIO) - od razu do przycisku pobierania,
-# bez zostawiania plikow na dysku serwera.
+# ZIP w pamieci (bez zapisu na dysk)
 def spakuj(pliki, dodatkowe=None):
-    """ZIP w pamieci. pliki: lista sciezek, dodatkowe: {nazwa_w_zipie: bajty}."""
+    """Pakuje pliki do ZIP-a w pamieci (bez zapisu na dysk) - do przycisku pobierania.
+
+    Po co: st.download_button potrzebuje bajtow pliku; ZIP budowany w io.BytesIO
+    nie zostawia smieci na dysku. Pliki z dysku trafiaja do folderu images/
+    w ZIP-ie, dodatkowe dane (JSON, JPG z pamieci) - pod podana nazwa.
+
+    Argumenty:
+        pliki     - lista sciezek do plikow z dysku (moze byc pusta)
+        dodatkowe - {nazwa_w_zipie: bajty albo tekst}, np. {"prawda.json": "..."};
+                    None = brak
+
+    Zwraca:
+        bytes - gotowy plik ZIP (kompresja ZIP_DEFLATED)
+
+    Uzywana w:
+        zakladka 2 - kadry.zip (same kadry) i symulacja_pelna.zip (+ prawda, podglad, oryginal)
+        zakladka 3 - skladanie.zip (kroki skladania + mozaika + raport)
+    """
     bufor = io.BytesIO()
     with zipfile.ZipFile(bufor, "w", zipfile.ZIP_DEFLATED) as z:
         for p in pliki:
@@ -112,36 +231,91 @@ def spakuj(pliki, dodatkowe=None):
             z.writestr(nazwa, dane)
     return bufor.getvalue()
 
+#zamienia na jpg w bajtach
+def jpg_bajty(img, jakosc=95):
+    """Koduje obraz do JPG w pamieci (bajty pliku) - odwrotnosc wczytaj_z_uploadu.
 
-def jpg_bajty(img, jakosc=92):
+    Po co: przyciski pobierania i ZIP-y potrzebuja bajtow pliku, a nie tablicy
+    pikseli. cv2.imencode kompresuje, tobytes() zamienia na zwykle bytes.
+    Jakosc 0-100: powyzej ok. 90 roznicy prawie nie widac, a plik rosnie
+    (pole 2400 x 1600: jakosc 95 -> 1.9 MB, 92 -> 1.5 MB, 85 -> 1.1 MB).
+
+    Argumenty:
+        img    - obraz BGR
+        jakosc - jakosc JPEG 0-100 (dom. 95)
+
+    Zwraca:
+        bytes - plik JPG
+
+    Uzywana w:
+        zakladka 3 - "Mozaika (JPG)", kroki skladania w ZIP-ie (jakosc 85), mozaika.jpg w ZIP-ie
+        zakladka 4 - "Pobierz mozaike (JPG, aktualny widok)"
+    """
     ok, buf = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, jakosc])
     return buf.tobytes()
 
-
+# zakladka 3: animacja rosnacej mozaiki; klatki - lista obrazow OpenCV,
+# szer - szerokosc GIF w px, ms - czas jednej klatki w ms
 def gif_z_klatek(klatki, szer=700, ms=500):
-    """Animacja rosnacej mozaiki. Wszystkie klatki na wspolnym plotnie,
-    zeby animacja nie skakala przy zmianie rozmiaru mozaiki."""
+    """Sklada kolejne stany mozaiki w animowany GIF - widac, jak mozaika rosnie.
+
+    Po co: podglad i plik do pobrania z przebiegu skladania. Wszystkie klatki
+    sa wklejane w lewy gorny rog wspolnego czarnego plotna (rozmiar najwiekszej
+    klatki), zeby animacja nie skakala, gdy mozaika rosnie. Potem plotno
+    zmniejszane do szerokosci szer, BGR -> RGB, PIL zapisuje GIF w pamieci.
+    GIF ma najwyzej 256 kolorow na klatke - do ogladania wystarczy.
+
+    Argumenty:
+        klatki - lista obrazow BGR (kolejne stany mozaiki), rozne rozmiary
+        szer   - szerokosc GIF-a w px (wysokosc z proporcji), dom. 700
+        ms     - czas jednej klatki w ms, dom. 500 (2 klatki na sekunde)
+
+    Zwraca:
+        bytes - plik GIF (petla w nieskonczonosc); None - gdy brak klatek
+        np. 55 kadrow, odswiezanie co 3 -> ok. 19 klatek, 700 x 502 px, 9.5 s
+
+    Uzywana w:
+        zakladka 3 - "Animacja skladania (GIF)" i podglad animacji
+    """
     if not klatki:
         return None
-    H = max(k.shape[0] for k in klatki)
-    W = max(k.shape[1] for k in klatki)
-    s = szer / W
+    H = max(k.shape[0] for k in klatki) #najwieksza wysokosc
+    W = max(k.shape[1] for k in klatki) #najwieksza szerokosc z klatek do tworzenia czarnego plotna
+    s = szer / W #skala
     obrazy = []
     for k in klatki:
-        plotno = np.zeros((H, W, 3), np.uint8)
-        plotno[:k.shape[0], :k.shape[1]] = k
-        plotno = cv2.resize(plotno, (szer, max(1, int(H * s))), interpolation=cv2.INTER_AREA)
+        plotno = np.zeros((H, W, 3), np.uint8) #czarne polotno
+        plotno[:k.shape[0], :k.shape[1]] = k #dodaje do szerokosci wysokosci poloczone zdj
+        plotno = cv2.resize(plotno, (szer, max(1, int(H * s))), interpolation=cv2.INTER_AREA) #
         obrazy.append(Image.fromarray(bgr_na_rgb(plotno)))
     bufor = io.BytesIO()
     obrazy[0].save(bufor, format="GIF", save_all=True, append_images=obrazy[1:],
-                   duration=ms, loop=0)
+                   duration=ms, loop=0) # loop=0 - petla w nieskonczonosc
     return bufor.getvalue()
 
 
-# Pomijamy __MACOSX (smieci, ktore macOS dokleja do ZIP-ow) i pliki,
-# ktore nie sa obrazami.
 def rozpakuj_kadry(pliki_uploadu, cel):
-    """Kadry wgrane przez uzytkownika: pojedyncze obrazy albo ZIP."""
+    """Zapisuje kadry wgrane w zakladce 3 do jednego folderu i zwraca je po kolei.
+
+    Po co: uzytkownik moze wgrac pojedyncze zdjecia albo ZIP (np. kadry.zip
+    z zakladki 2). Skladacz potrzebuje listy plikow na dysku w kolejnosci lotu.
+    Z ZIP-a brane sa tylko obrazy; foldery wewnatrz sa splaszczane (images/IMG_0001.jpg
+    -> IMG_0001.jpg), smieci z __MACOSX pomijane. Folder docelowy jest najpierw
+    czyszczony, zeby nie mieszac starych i nowych zdjec.
+
+    Argumenty:
+        pliki_uploadu - lista UploadedFile z st.file_uploader: obrazy
+                        (.jpg .jpeg .png .tif .tiff) albo ZIP-y
+        cel           - Path folderu docelowego, np. katalog_roboczy() / "wgrane"
+
+    Zwraca:
+        list[Path] - zapisane obrazy posortowane po nazwie (= kolejnosc lotu, gdy
+        nazwy maja zera wiodace: IMG_0001...; 1.jpg, 10.jpg, 2.jpg ulozylyby sie zle);
+        pusta lista, gdy nie wgrano zadnego obrazu
+
+    Uzywana w:
+        zakladka 3 - zrodlo "Wgraj wlasne zdjecia / ZIP" po kliknieciu "Zloz mozaike"
+    """
     if cel.exists():
         shutil.rmtree(cel)
     cel.mkdir(parents=True)
@@ -162,7 +336,7 @@ st.title("FIELDEYE — symulator lotu i składanie zdjęć")
 st.caption("Tniesz jedno zdjęcie na kadry tak, jakby robił je dron, pobierasz je, "
            "a potem sprawdzasz, czy program złoży je z powrotem.")
 
-# trzy zakladki - kod kazdej jest w bloku 'with tabN:' ponizej
+# cztery zakladki - kod kazdej jest w bloku 'with tabN:' ponizej
 tab1, tab2, tab3, tab4 = st.tabs(["1. Rozkład zdjęcia", "2. Kadry do pobrania", "3. Składanie",
                                   "4. Lot z detekcją"])
 
@@ -177,15 +351,12 @@ with tab1:
 
     with lewa:
         st.subheader("Źródło")
-        zrodlo_typ = st.radio("Obraz do pocięcia", ["Wgraj zdjęcie", "Sztuczne pole"],
-                              horizontal=True)
-        if zrodlo_typ == "Wgraj zdjęcie":
-            plik = st.file_uploader("Duże zdjęcie (ortofotomapa, zdjęcie z drona...)",
-                                    type=["jpg", "jpeg", "png", "tif", "tiff"])
-        else:
-            c1, c2 = st.columns(2)
-            pole_w = c1.number_input("Szerokość pola", 800, 6000, 2400, 100)
-            pole_h = c2.number_input("Wysokość pola", 600, 6000, 1600, 100)
+
+        st.text("Wgraj zdjęcie")
+
+        plik = st.file_uploader("Duże zdjęcie (zdjęcie z drona, pola ...)",
+                                type=["jpg", "jpeg", "png", "tif", "tiff"])
+
         max_wym = st.slider("Zmniejsz źródło do (dłuższy bok, px)", 800, 6000, 2400, 100,
                             help="Duże zdjęcia z drona mają 4000+ px - zmniejszenie "
                                  "przyspiesza wszystko kilkukrotnie")
@@ -223,16 +394,14 @@ with tab1:
         # Ten blok wykonuje sie tylko w przebiegu, w ktorym kliknieto przycisk.
         # Wynik trafia do session_state, wiec zostaje widoczny po kolejnych kliknieciach.
         if uruchom:
-            if zrodlo_typ == "Wgraj zdjęcie":
-                if plik is None:
-                    st.warning("Najpierw wgraj zdjęcie.")
-                    st.stop()
-                img = wczytaj_z_uploadu(plik)
-                if img is None:
-                    st.error("Nie udało się odczytać obrazu.")
-                    st.stop()
-            else:
-                img = zbuduj_pole(int(pole_w), int(pole_h), seed=int(seed))
+            if plik is None:
+                st.warning("Najpierw wgraj zdjęcie.")
+                st.stop()
+            img = wczytaj_z_uploadu(plik)
+            if img is None:
+                st.error("Nie udało się odczytać obrazu.")
+                st.stop()
+
             img = zmniejsz(img, max_wym)
 
             u = SimSettings(tryb=tryb, kadr=int(kadr), overlap=overlap, sidelap=sidelap,
@@ -491,7 +660,27 @@ with tab3:
 
 @st.cache_resource(show_spinner="Wczytuję model...")
 def detektor_lotu(model, prog, wejscie):
-    """Model YOLO, a gdy go nie ma - atrapa z ostrzezeniem."""
+    """Wczytuje model do wykrywania chwastow - raz na sesje (cache).
+
+    Po co: wczytanie modelu trwa kilka sekund; @st.cache_resource sprawia, ze dla
+    tych samych argumentow model jest tworzony raz, a kolejne loty biora gotowy.
+    Wybor po rozszerzeniu pliku:
+        .hef        -> HailoDetector (tylko na urzadzeniu z Hailo-8, np. Raspberry Pi)
+        inny plik   -> YoloDetector (.pt / .onnx przez Ultralytics)
+        brak pliku  -> DummyDetector - atrapa szukajaca plam zieleni (NIE jest detektorem
+                       chwastow) + ostrzezenie
+
+    Argumenty:
+        model   - sciezka do modelu, np. "models/weights/fieldeye_final.pt"
+        prog    - prog pewnosci (0.05-0.9, dom. 0.15)
+        wejscie - rozmiar wejscia sieci w px (640 / 960 / 1280)
+
+    Zwraca:
+        (detektor, uwaga) - uwaga to tekst ostrzezenia albo None, gdy model wczytany
+
+    Uzywana w:
+        zakladka 4 - "Start lotu"
+    """
     if model and Path(model).exists() and str(model).lower().endswith(".hef"):
         try:
             return HailoDetector(model, prog), None
@@ -507,7 +696,24 @@ def detektor_lotu(model, prog, wejscie):
 
 
 def kafelki_wedlug_dni(katalog):
-    """{dzien lotu: [pliki]} - dzien z nazwy pliku (RRRR-MM-DD), reszta jako "bez daty"."""
+    """Grupuje kafelki WeedsGalore wedlug dnia lotu (data w nazwie pliku).
+
+    Po co: WeedsGalore to jedno pole sfotografowane kilka razy - kafelki z roznych
+    dni pokazuja te same miejsca. Lot musi byc nad jednym dniem, inaczej to samo
+    miejsce wystapi w siatce dwa razy i mozaika sie nie zlozy.
+    Data szukana wyrazeniem regularnym RRRR-MM-DD, np.
+    weedsgalore__2023-05-25__2023-05-25_0780.jpg -> "2023-05-25".
+
+    Argumenty:
+        katalog - folder z kafelkami, np. "zbior_lotnicze/dataset/images/test"
+
+    Zwraca:
+        {dzien: [pliki]} - pliki posortowane po nazwie; bez daty w nazwie -> "bez daty"
+        np. {"2023-05-25": [14 plikow], "2023-05-30": [...], ...}
+
+    Uzywana w:
+        zakladka 4 - lista dni w selectboxie "Dzien lotu"
+    """
     import re
     dni = {}
     for p in sorted(Path(katalog).glob("*")):
@@ -518,12 +724,28 @@ def kafelki_wedlug_dni(katalog):
 
 
 def pole_z_kafelkow(pliki, ile=25, z_etykietami=False):
-    """Skleja kafelki w prostokatna siatke - zrodlo do symulacji lotu.
+    """Skleja kafelki w prostokatna siatke - zrodlo do symulacji lotu nad prawdziwymi chwastami.
 
-    Kafelki musza pochodzic z JEDNEGO dnia lotu. WeedsGalore to jedno pole
-    sfotografowane kilka razy - kafelki z roznych dni pokazuja te same miejsca,
-    a to samo miejsce w dwoch punktach siatki to dla skladacza sprzecznosc
-    i mozaika sie nie sklada.
+    Po co: zbiory treningowe to osobne kafelki, a symulator potrzebuje jednego
+    duzego zdjecia pola. Kafelki musza pochodzic z JEDNEGO dnia lotu (patrz
+    kafelki_wedlug_dni). To nie jest ciagle pole - na stykach kafelkow sa
+    skoki - ale chwasty sa prawdziwe i maja prawdziwe etykiety.
+    Jak sklada: pierwsze `ile` kafelkow, kolumn = ceil(sqrt(n)), tylko pelne wiersze,
+    wszystkie przeskalowane do rozmiaru pierwszego; np. 25 kafelkow -> siatka 5 x 5.
+    Z etykietami: ramki z plikow YOLO (cx, cy, w, h - ulamki) przeliczone na piksele
+    i przesuniete o polozenie kafelka w siatce.
+
+    Argumenty:
+        pliki       - lista sciezek kafelkow (z jednego dnia)
+        ile         - najwiecej kafelkow do uzycia (dom. 25)
+        z_etykietami - True: zwroc tez prawdziwe ramki chwastow
+
+    Zwraca:
+        obraz BGR siatki; z z_etykietami=True: (obraz, [(x0, y0, x1, y1), ...]) w px siatki;
+        None - gdy kafelkow mniej niz 4
+
+    Uzywana w:
+        zakladka 4 - pole "Kafelki WeedsGalore (test)" po kliknieciu "Start lotu"
     """
     pliki = list(pliki)[:ile]
     if len(pliki) < 4:
@@ -553,11 +775,27 @@ def pole_z_kafelkow(pliki, ile=25, z_etykietami=False):
 
 
 def prawda_w_kadrze(prawda, kadr_info, kadr, min_widocznosc=0.4, kadr_wys=None):
-    """Prawdziwe ramki ze zrodla -> wspolrzedne kadru.
+    """Przelicza prawdziwe ramki chwastow z pola na wspolrzedne jednego kadru.
 
-    Macierz symulatora przenosi piksel kadru na zrodlo, wiec do kadru idziemy
-    jej odwrotnoscia. Ramka obcieta krawedzia kadru zostaje, gdy widac co
-    najmniej min_widocznosc jej powierzchni - tak samo jak przy kafelkowaniu.
+    Po co: zeby ocenic detekcje na kadrze, trzeba wiedziec, gdzie na NIM sa
+    prawdziwe chwasty. Macierz z macierz_kadru() przenosi piksel kadru na pole,
+    wiec w druga strone idziemy jej odwrotnoscia (cv2.invertAffineTransform).
+    Ramka obrocona razem z kadrem -> jej obwiednia -> przyciecie do krawedzi kadru.
+    Ramka zostaje, gdy w kadrze widac co najmniej min_widocznosc jej powierzchni
+    (tak samo jak przy kafelkowaniu zbioru).
+
+    Argumenty:
+        prawda         - prawdziwe ramki na polu: [(x0, y0, x1, y1), ...] w px pola
+        kadr_info      - wpis kadru z prawda.json (srodek, kat_st, zasieg_px, kadr_px)
+        kadr           - szerokosc kadru (px)
+        min_widocznosc - jaka czesc ramki musi byc w kadrze (dom. 0.4 = 40%)
+        kadr_wys       - wysokosc kadru (px); None = z kadr_info albo kwadrat
+
+    Zwraca:
+        lista ramek (x0, y0, x1, y1) w px kadru
+
+    Uzywana w:
+        zakladka 4 - dla kazdego kadru: zielone ramki i porownanie z wykrytymi
     """
     kh = kadr_wys or (kadr_info.get("kadr_px") or [kadr, kadr])[1]
     M = macierz_kadru(*kadr_info["srodek"], kadr_info["kat_st"], kadr_info["zasieg_px"], kadr, kh)
@@ -574,14 +812,48 @@ def prawda_w_kadrze(prawda, kadr_info, kadr, min_widocznosc=0.4, kadr_wys=None):
 
 
 def porownaj(wykryte, prawdziwe, iou=0.5):
-    """-> (trafione, pominiete, falszywe) dla jednego obrazu."""
+    """Porownuje wykryte ramki z prawdziwymi na jednym obrazie.
+
+    Po co: zeby policzyc, ile chwastow model znalazl, ile przegapil i ile
+    falszywych alarmow dal. Para wykryta-prawdziwa liczy sie jako trafienie, gdy
+    ramki nachodza na siebie w co najmniej iou (IoU = czesc wspolna / suma).
+    Liczy to pr_przy_progach z models/evaluation.py (ten sam kod co ocena modelu).
+
+    Argumenty:
+        wykryte   - [(x0, y0, x1, y1, pewnosc), ...]
+        prawdziwe - [(x0, y0, x1, y1), ...]
+        iou       - prog nakladania (dom. 0.5)
+
+    Zwraca:
+        (trafione, pominiete, falszywe) - trzy liczby calkowite
+
+    Uzywana w:
+        zakladka 4 - dla kazdego kadru (opis pod obrazem) i na koncu dla mozaiki
+    """
     w = pr_przy_progach({"x": [(0, r[4], *r[:4]) for r in wykryte]},
                         {"x": [(0, *r[:4]) for r in prawdziwe]}, [0.0], iou)[0]
     return w["trafione"], w["pominiete"], w["falszywe"]
 
 
 def gif_lotu(klatki, mozaika, szer=640, ms=400):
-    """Animacja: pary kadrow po kolei, na koncu mozaika (wpisana w ten sam kadr)."""
+    """Sklada animacje lotu: kadry po kolei, na koncu mozaika z chwastami.
+
+    Po co: plik do pobrania pokazujacy caly lot. Kazda klatka to para
+    [kadr | wykryte chwasty] przeskalowana do szerokosci szer; ostatnia to
+    mozaika wpisana (wysrodkowana) w ten sam rozmiar, wyswietlana 4 s.
+
+    Argumenty:
+        klatki  - lista obrazow BGR (pary kadr | oznaczony), ten sam rozmiar
+        mozaika - mozaika z narysowanymi ramkami (BGR) albo None
+        szer    - szerokosc GIF-a w px (dom. 640)
+        ms      - czas jednej klatki w ms (dom. 400); ostatnia klatka 4000 ms
+
+    Zwraca:
+        bytes - plik GIF (petla w nieskonczonosc); None - gdy brak klatek
+
+    Uzywana w:
+        zakladka 4 - "Pobierz animacje lotu (GIF)"
+    """
     if not klatki:
         return None
     h, w = klatki[0].shape[:2]
@@ -606,6 +878,25 @@ ZIELONY, ROZOWY = (60, 200, 60), (255, 0, 255)
 
 
 def rysuj_ramki(img, ramki, grubosc=2, kolor=ROZOWY, kopia=True):
+    """Rysuje prostokaty ramek na obrazie.
+
+    Po co: wspolne rysowanie ramek w zakladce 4 - wykryte chwasty na rozowo,
+    prawdziwe na zielono (kolory w BGR: ROZOWY (255, 0, 255), ZIELONY (60, 200, 60)).
+
+    Argumenty:
+        img     - obraz BGR
+        ramki   - [(x0, y0, x1, y1, ...), ...]; dalsze pola (np. pewnosc) sa pomijane
+        grubosc - grubosc linii w px (dom. 2)
+        kolor   - kolor w BGR (dom. ROZOWY)
+        kopia   - True: rysuj na kopii (oryginal bez zmian); False: rysuj na img
+                  (szybciej, gdy kilka warstw ramek na jednym obrazie)
+
+    Zwraca:
+        obraz z ramkami (kopia albo ten sam img)
+
+    Uzywana w:
+        zakladka 4 - kadry podczas lotu, mozaika (widok "Wykryte / Prawdziwe / Obie"), GIF
+    """
     out = img.copy() if kopia else img
     for x0, y0, x1, y1, *_ in ramki:
         cv2.rectangle(out, (int(x0), int(y0)), (int(x1), int(y1)), kolor, grubosc)
@@ -613,7 +904,24 @@ def rysuj_ramki(img, ramki, grubosc=2, kolor=ROZOWY, kopia=True):
 
 
 def scal_ramki(ramki, prog_iou=0.3):
-    """Ten sam chwast z kilku kadrow -> jedna ramka (zostaje najpewniejsza)."""
+    """Scala ramki tego samego chwastu z kilku kadrow w jedna.
+
+    Po co: kadry na siebie zachodza, wiec ten sam chwast jest wykrywany na 2-6
+    kadrach; po przeniesieniu na mozaike jego ramki leza prawie w tym samym miejscu.
+    Zachlanne tlumienie (NMS): ramki od najpewniejszej, ramka zostaje, gdy z kazda
+    juz zostawiona nachodzi mniej niz prog_iou. Przy gesto rosnacych chwastach
+    moze polaczyc dwa sasiednie w jeden.
+
+    Argumenty:
+        ramki    - [(x0, y0, x1, y1, pewnosc), ...] na mozaice
+        prog_iou - powyzej tego nakladania ramki uznane za ten sam chwast (dom. 0.3)
+
+    Zwraca:
+        lista ramek, ktore zostaly (ten sam format), od najpewniejszej
+
+    Uzywana w:
+        zakladka 4 - na_mozaike_wszystkie(): wykryte i prawdziwe ramki na mozaice
+    """
     def iou(a, b):
         x0, y0, x1, y1 = max(a[0], b[0]), max(a[1], b[1]), min(a[2], b[2]), min(a[3], b[3])
         if x1 <= x0 or y1 <= y0:
@@ -654,7 +962,7 @@ with tab4:
         else:
             st.caption("Sztuczne pole nie ma prawdziwych chwastów — przydaje się tylko do "
                        "sprawdzenia samego przebiegu.")
-        model4 = st.text_input("Model", "modele_wg_sudars/model.pt", key="lot_model")
+        model4 = st.text_input("Model", "models/weights/fieldeye_final.pt", key="lot_model")
         prog4 = st.slider("Próg ufności", 0.05, 0.90, 0.15, 0.05, key="lot_prog")
         wej4 = st.select_slider("Wejście sieci", [640, 960, 1280], 1280, key="lot_wejscie")
         kam4 = st.checkbox("Kamera drona (wysokość lotu i optyka)", False, key="lot_kamera",
@@ -789,6 +1097,23 @@ with tab4:
                 st.error("Nie udało się złożyć mozaiki.")
                 st.stop()
             def na_mozaike_wszystkie(lista):
+                """Przenosi ramki ze wszystkich kadrow na mozaike i scala powtorzone.
+
+                Po co: detekcja dziala na kadrach, a wynik dla rolnika jest na mozaice. Dla kazdej
+                ramki 4 rogi przeliczane przez skl4.na_mozaike() (skala robocza, polozenie
+                kadru, poczatek mozaiki) -> obwiednia na mozaice; potem scal_ramki(), bo ten sam
+                chwast byl na kilku kadrach. Ramki z kadrow, ktore nie weszly do mozaiki, sa pomijane.
+
+                Argumenty:
+                    lista - dla kazdego kadru lista ramek [(x0, y0, x1, y1[, pewnosc]), ...]
+                            (ta sama kolejnosc co pliki4); bez pewnosci -> 1.0
+
+                Zwraca:
+                    lista unikalnych ramek (x0, y0, x1, y1, pewnosc) w px mozaiki
+
+                Uzywana w:
+                    zakladka 4 - dla wykrytych (wykrycia4) i prawdziwych (prawdy4) chwastow
+                """
                 wynik = []
                 for p, ramki, rozm in zip(pliki4, lista, rozmiary4):
                     for r in ramki:

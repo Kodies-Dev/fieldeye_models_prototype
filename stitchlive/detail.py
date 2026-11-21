@@ -1,4 +1,4 @@
-"""Skladacz przyrostowy na cv2.detail.
+"""Skladacz przyrostowy na cv2.detail. tez mniej wazny jak basic do porownania
 
 Model ruchu
 -----------

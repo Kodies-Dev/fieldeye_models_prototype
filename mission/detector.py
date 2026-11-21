@@ -264,11 +264,73 @@ class FlipTTADetector:
         return polacz_wbf(listy, self.iou)
 
 
+class OnnxDetector:
+    """Model .onnx przez ONNX Runtime - bez PyTorcha i ultralytics (lekka binarka).
+
+    Ten sam model co .pt, wyeksportowany przez `models.cli onnx` (wyjscie
+    (1, 4 + liczba klas, N): srodek, szerokosc i wysokosc ramki w pikselach
+    wejscia oraz pewnosc kazdej klasy). Obraz przygotowany jak dla Hailo
+    (letterbox, RGB, /255), NMS w OpenCV z tymi samymi ustawieniami co
+    ultralytics przy przewidywaniu (IoU 0,7, do 300 ramek).
+    """
+
+    def __init__(self, model, prog_pewnosci=0.25, iou=0.7, maks=300, nazwy=None):
+        import onnxruntime as ort
+        dostepne = ort.get_available_providers()
+        dostawcy = [d for d in ("CUDAExecutionProvider", "CPUExecutionProvider") if d in dostepne]
+        self._sesja = ort.InferenceSession(str(model), providers=dostawcy or dostepne)
+        we = self._sesja.get_inputs()[0]
+        self._we = we.name
+        self.wys, self.szer = int(we.shape[2]), int(we.shape[3])
+        self.prog, self.iou, self.maks = prog_pewnosci, iou, maks
+        self.nazwy = nazwy or {0: "chwast"}
+        self.nazwa = f"ONNX({Path(model).name})"
+
+    def wykryj(self, obraz):
+        h0, w0 = obraz.shape[:2]
+        we, s, px, py = letterbox(obraz, self.wys, self.szer)
+        x = np.ascontiguousarray(we.transpose(2, 0, 1)[None], dtype=np.float32) / 255.0
+        p = self._sesja.run(None, {self._we: x})[0][0].T          # (N, 4 + klasy)
+        if p.shape[1] > 5:
+            klasy = p[:, 4:].argmax(1)
+            pewn = p[:, 4:].max(1)
+        else:
+            klasy, pewn = np.zeros(len(p), int), p[:, 4]
+        m = pewn >= self.prog
+        if not m.any():
+            return []
+        cx, cy, w, h = p[m, 0], p[m, 1], p[m, 2], p[m, 3]
+        pewn, klasy = pewn[m], klasy[m]
+        ramki = np.stack([cx - w / 2, cy - h / 2, w, h], 1)
+        idx = cv2.dnn.NMSBoxes(ramki.tolist(), pewn.tolist(), float(self.prog), float(self.iou))
+        idx = sorted(np.array(idx).reshape(-1).tolist(), key=lambda i: -pewn[i])[: self.maks]
+        out = []
+        for i in idx:
+            x0, y0, bw, bh = ramki[i]
+            X0, X1 = np.clip([(x0 - px) / s, (x0 + bw - px) / s], 0, w0)
+            Y0, Y1 = np.clip([(y0 - py) / s, (y0 + bh - py) / s], 0, h0)
+            if X1 > X0 and Y1 > Y0:
+                out.append(Detection(X0, Y0, X1, Y1, self.nazwy.get(int(klasy[i]), str(klasy[i])), float(pewn[i])))
+        return out
+
+
+def _detektor_z_pliku(m, prog, wejscie, urzadzenie):
+    m = str(m)
+    if m.lower().endswith(".hef"):
+        return HailoDetector(m, prog)
+    if m.lower().endswith(".onnx"):
+        try:
+            import onnxruntime  # noqa: F401
+            return OnnxDetector(m, prog)
+        except ImportError:
+            pass                                   # bez onnxruntime - przez ultralytics, jak dotad
+    return YoloDetector(m, prog, wejscie, urzadzenie)
+
+
 def zbuduj_z_plikow(modele, prog=0.15, wejscie=1280, urzadzenie=None, tta=False):
     """Jeden albo kilka modeli (.pt / .onnx / .hef) -> detektor, opcjonalnie z TTA."""
     modele = [modele] if isinstance(modele, (str, Path)) else list(modele)
-    dets = [HailoDetector(m, prog) if str(m).lower().endswith(".hef")
-            else YoloDetector(m, prog, wejscie, urzadzenie) for m in modele]
+    dets = [_detektor_z_pliku(m, prog, wejscie, urzadzenie) for m in modele]
     d = dets[0] if len(dets) == 1 else EnsembleDetector(dets)
     return FlipTTADetector(d) if tta else d
 

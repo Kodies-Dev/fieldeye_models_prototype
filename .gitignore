@@ -36,3 +36,11 @@ mozaika_chwasty*.jpg
 lot.gif
 skladanie.gif
 skladanie.zip
+
+# binarka (scripts/build_binary.sh)
+dist/
+build/
+*.spec
+.venv-build-*/
+build-*.log
+.kopia_przed_*/

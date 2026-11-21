@@ -1,8 +1,43 @@
-"""Skladacz podstawowy - opakowanie cv2.Stitcher.
+"""Skladacz 'basic' - opakowanie gotowego cv2.Stitcher z OpenCV.
 
-Po kazdym nowym zdjeciu przelicza mozaike od nowa z calego zbioru.
-Nieoptymalne, ale najprostsze i najszybsze do uruchomienia. Sluzy do
-odpowiedzi na pytanie: czy nasz material w ogole daje sie zlozyc.
+Co robi
+-------
+Po KAZDYM nowym zdjeciu sklada mozaike od nowa ze wszystkich dotychczasowych
+zdjec jednym wywolaniem cv2.Stitcher (tryb SCANS - kamera przesuwana nad
+plaskim terenem, model afiniczny; PANORAMA - kamera obracana w miejscu).
+Wszystko robi OpenCV w srodku: punkty, dopasowanie, polozenie kadrow,
+wyrownanie jasnosci, szwy, mieszanie.
+
+Po co
+-----
+Punkt odniesienia dla pozostalych metod:
+  - czy nasz material w ogole daje sie zlozyc (najprostsza droga, bez naszego kodu),
+  - jak szybko rosnie czas, gdy skladamy wszystko od nowa (raport_czasu) -
+    to uzasadnia metody przyrostowe: detail.py i global_stitcher.py.
+
+Wady (dlatego nie jest domyslna)
+--------------------------------
+  - czas rosnie z kazdym kadrem (kazde dodaj() wczytuje i sklada wszystko od nowa),
+  - przy kadrach obroconych o kilka stopni mozaika wychodzi rozmyta
+    (to samo co w detail.py) - stad metoda 'global',
+  - przy bledzie zwraca tylko kod (KODY), bez szczegolow, ktory kadr zawinil.
+
+Interfejs
+---------
+Ten sam co pozostale skladacze, zeby app.py i cli.py mogly ich uzywac zamiennie:
+    s = BasicStitcher(downscale=0.5)
+    for sciezka in zdjecia:
+        s.dodaj(sciezka)        # True, gdy mozaika zostala zlozona
+    s.mozaika                   # gotowy obraz (BGR) albo None
+    s.raport_czasu()            # [{"zdjec", "czas_s", "ok"}, ...]
+Brak zakoncz() i raport() - nie sa potrzebne (mozaika zawsze aktualna);
+app.py sprawdza je przez hasattr().
+
+Uzywany w
+---------
+  app.py, zakladka 3 (linia 390) - metoda "basic";
+      downscale = min(1, Mpx_z_suwaka / 0.6 * 0.5), przy 0.6 Mpx -> 0.5
+  cli.py (linia 27) - --metoda basic (batch / watch / demo)
 """
 
 import logging

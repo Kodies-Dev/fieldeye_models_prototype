@@ -12,7 +12,7 @@ sys.path.insert(0, str(ROOT))
 from stitchlive.camera import (ARDUCAM_64MP_16MP, ARDUCAM_64MP_64MP, opis_lotu,  # noqa: E402
                                odstep_zdjec_s, rozmycie_px)
 from stitchlive.flight_sim import (SimSettings, _rozmyj_ruchem, macierz_kadru,  # noqa: E402
-                                   marginesy, naroza_kadru, rozloz, wytnij)
+                                   marginesy, narozniki_kadru, rozloz, wytnij)
 
 
 # ---------------------------------------------------------------- kamera
@@ -61,7 +61,7 @@ def test_prostokatny_kadr_to_dokladny_wycinek(pole):
 
 def test_naroza_prostokata_i_srodek_po_obrocie():
     M = macierz_kadru(700, 450, 30, 400, 400, 300)
-    nar = np.array(naroza_kadru(M, 400, 300))
+    nar = np.array(narozniki_kadru(M, 400, 300))
     assert np.allclose(nar.mean(axis=0), (700, 450))         # obrot wokol srodka
     assert np.linalg.norm(nar[1] - nar[0]) == pytest.approx(400)
     assert np.linalg.norm(nar[3] - nar[0]) == pytest.approx(300)

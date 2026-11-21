@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from stitchlive.flight_sim import (SimSettings, rozloz, macierz_kadru,  # noqa: E402
-                                naroza_kadru, wytnij, margines)
+                                   narozniki_kadru, wytnij, margines)
 from stitchlive.evaluation import ocen, werdykt                        # noqa: E402
 from stitchlive.field import zbuduj_pole                           # noqa: E402
 
@@ -40,7 +40,7 @@ def test_macierz_obrot_zachowuje_srodek():
 
 def test_macierz_skala_zasiegu():
     """Kadr 400 px obejmujacy 800 px zrodla - bok w zrodle ma 800 px."""
-    nar = naroza_kadru(macierz_kadru(1000, 1000, 0, 800, 400), 400)
+    nar = narozniki_kadru(macierz_kadru(1000, 1000, 0, 800, 400), 400)
     assert abs(math.dist(nar[0], nar[1]) - 800) < 1e-6
 
 
