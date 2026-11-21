@@ -10,7 +10,7 @@ venv/
 .DS_Store
 .idea/
 .vscode/
-dane/
+/dane/
 zbior_*/
 diag/
 *.cache

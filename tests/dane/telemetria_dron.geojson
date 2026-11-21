@@ -1,0 +1,21 @@
+{
+ "type": "FeatureCollection",
+ "features": [
+  {
+   "type": "Feature",
+   "geometry": {"type": "Point", "coordinates": [18.73101322, 50.29004902, 239.73]},
+   "properties": {
+    "image": "20261109T142859.998Z.jpg", "seq": 1, "flight_id": "20261109T142856Z",
+    "time_utc": "2026-11-09T14:28:59.998Z", "time_source": "gps", "fix": true,
+    "position_method": "interpolated", "dt_before_s": 0.998, "dt_after_s": 0.002,
+    "fix_quality": 2, "satellites": 33, "hdop": 0.85, "alt_msl_m": 239.73, "alt_ellipsoid_m": 281.94,
+    "speed_mps": 0.02, "course_deg": 7.9,
+    "survey": {"agl_m": 2.0, "footprint_along_m": 2.163, "footprint_across_m": 2.88, "overlap": 0.3,
+               "spacing_m": 1.514, "gsd_mm_per_px": 0.623, "position_accuracy_m": 1.0},
+    "camera": {"exposure_us": 59998, "analogue_gain": 3.3355047702789307, "lens_position": 5.858791828155518,
+               "sensor_timestamp_ns": 388893213000, "width": 4624, "height": 3472},
+    "motion_blur_px": 1.5
+   }
+  }
+ ]
+}
