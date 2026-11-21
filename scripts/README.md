@@ -1,46 +1,59 @@
 # scripts/ — skrypty pomocnicze
 
-Wszystkie uruchamia się z katalogu `stitch-live`, z aktywnym `.venv`.
-Długie treningi warto puszczać z `caffeinate -i`, żeby Mac nie zasnął.
+Wszystkie uruchamia się z głównego katalogu projektu.
 
-## Przygotowanie i dane
+## Model końcowy — jeden skrypt
+
+```bash
+caffeinate -i bash scripts/final_model.sh     # ok. 4 h z treningiem
+streamlit run app.py
+```
+
+`final_model.sh` z surowych danych w `dane/` odtwarza najlepszy model i wszystko, czego
+potrzebuje `app.py`:
+
+1. normalizacja WeedsGalore → `zbior_lotnicze/`, Sudars → `zbior_naziemne/`,
+   EWIS1 → `zbior_ewis1_podzial/` (dzień 16.05.2022 jako test),
+2. trening → `modele_dane_ewis1_bt/model.pt`, kopia do `models/weights/fieldeye_final.pt`,
+3. ocena tego modelu na teście EWIS1 i WeedsGalore, bez i z TTA → `wyniki/model_koncowy/`,
+4. paczka ONNX dla Hailo → `hailo/hailo_final.zip`,
+5. tabela wyników.
+
+Wymaga aktywnego `.venv` (`pip install -r requirements.txt`). Kroki już zrobione są
+pomijane, więc można przerwać i uruchomić ponownie.
+
+## Hailo (inne maszyny)
+
+| Plik | Gdzie | Do czego |
+|---|---|---|
+| `HAILO.md` | — | kompilacja do `.hef` krok po kroku: Mac → WSL → Raspberry Pi |
+| `compile_hef.py` | WSL | ONNX → HEF przez kompilator Hailo, własna konfiguracja NMS (obraz 1280, 1 klasa, próg 0,05, do 300 ramek) |
+| `check_hef.sh` | Raspberry Pi | akcelerator, `parse-hef`, szybkość, dokładność na teście EWIS1 i porównanie z `.pt` (AP50 0,812 / 0,817) |
+
+## Składanie mozaiki i symulator
 
 | Skrypt | Do czego |
 |---|---|
-| `setup_mac.sh` | tworzy `.venv`, instaluje biblioteki, sprawdza GPU, uruchamia testy |
 | `download_datasets.sh` | pobiera prawdziwe zdjęcia z drona z ODMdata (do testów składania) |
 | `generate_field.py` | generuje sztuczne zdjęcia pola z etykietami chwastów YOLO |
-| `make_test_data.py` | starsza, prostsza wersja symulatora (nowsza: `python -m stitchlive.cli rozloz`) |
+| `make_test_data.py` | starsza, prostsza wersja symulatora (`make dane`) |
 | `simulate_flight.sh` | kopiuje zdjęcia do katalogu w odstępach czasu, jak dron w locie |
 
-## Eksperymenty z modelem
-
-| Skrypt | Co sprawdza | Czas |
-|---|---|---|
-| `season_experiments.sh` | sezonowość: nadpróbkowanie maja, `scale`, model wczesny, progi dnia (`WARIANTY`, `SEED`) | do ok. 7 h |
-| `inference_experiments.sh` | poprawy bez treningu: TTA, ensemble, łączenie widoków, niski próg + głosowanie | minuty |
-| `fusion_eval.sh` | łączenie wykryć z wielu zdjęć w symulowanym locie | minuty |
-| `new_data_experiment.sh` | nowe dane w treningu: EWIS1 (z sorgo i bez), PhenoBench (`WARIANTY`) | 4–12 h |
-| `ewis1_test.sh` | drugi test: odłożony dzień lotu EWIS1; z `TRENUJ=1` także trening bez tego dnia | minuty / ok. 4 h |
-| `weedmaize_experiment.sh` | WeedMaize w treningu (`PRZEPIS`, `SKALA`, `MAKS`) | ok. 6 h |
-
-Każdy skrypt pomija kroki już zrobione (zbudowane zbiory, wytrenowane modele)
-i kończy się tabelą porównania z punktem odniesienia.
-
-## Hailo
-
-| Plik | Do czego |
-|---|---|
-| `HAILO.md` | kompilacja do `.hef` krok po kroku: Mac (ONNX, kalibracja) → Linux x86 / WSL (`hailomz`) → Raspberry Pi |
-| `finish_models.sh` | Mac: trening modelu 640, oceny, eksport ONNX z kontrolą, kalibracja, paczka `hailo/` |
-| `check_hef.sh` | Raspberry Pi: akcelerator, `parse-hef`, ocena `.hef` i porównanie z `.pt` |
-
-## simulate_flight.sh
-
-Kopiuje przez plik tymczasowy i zmienia nazwę — operacja atomowa, więc
+`simulate_flight.sh` kopiuje przez plik tymczasowy i zmienia nazwę — operacja atomowa, więc
 obserwujący program (`watch`) nigdy nie zobaczy pliku w połowie zapisu.
 
 ```bash
 python -m stitchlive.cli watch naplyw --renderuj-co 4 -o wyniki     # terminal 1
 ./scripts/simulate_flight.sh dane/test/images naplyw 1              # terminal 2
 ```
+
+## Binarka fieldeye-detect
+
+| Skrypt | Do czego |
+|---|---|
+| `fieldeye-detect.sh` | zdjęcia z katalogu → model chwastów → wynik w terminalu (bez budowania binarki) |
+| `fieldeye_detect_main.py` | punkt wejścia binarki: detekcja, symulowany dron z GPS, ocena namiarów |
+| `build_binary.sh` | buduje binarkę przez PyInstaller — na tym systemie, na którym ma działać |
+| `przygotuj_folder.sh` | samowystarczalny folder: binarka + modele + przykłady + `uruchom.sh` |
+
+Opis: `docs/fieldeye-detect.md`.

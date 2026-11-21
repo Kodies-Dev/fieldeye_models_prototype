@@ -20,10 +20,10 @@ jest celowo pomijany (sprawdza zachowanie programu bez tej biblioteki).
 | `test_weedmaize.py` | 5 | zmniejszanie do skali drona, limit zdjęć, wszystko do treningu |
 | `test_new_datasets.py` | 12 | adaptery EWIS1 (tylko kukurydza, zamienione wymiary w XML, obrócone ramki, odłożony dzień) i PhenoBench (maski 16-bit) |
 | `test_models.py` | 58 | plan treningu, kontrola danych, ocena według dni i rozmiaru, podział dniami, analiza zbioru (trening wymaga ultralytics — nie jest uruchamiany) |
-| `test_season.py` | 8 | nadpróbkowanie, zbiór z wybranych dni, progi według dni |
+| `test_season.py` | 7 | nadpróbkowanie, zbiór z wybranych dni, progi według dni |
 | `test_mission.py` | 33 | telemetria, georeferencja (błąd ok. 3 cm na znacznikach), scalanie, mapa |
 | `test_hailo.py` | 18 | `HailoDetector` bez sprzętu: letterbox, odczyt NMS Hailo, wybór detektora, AP50, konfiguracje misji, skrypty |
-| `test_inference.py` | 9 | WBF, ensemble, TTA z odbiciem, niski próg z głosowaniem |
+| `test_inference.py` | 8 | WBF, ensemble, TTA z odbiciem, niski próg z głosowaniem |
 | `test_fusion.py` | 8 | łączenie wykryć z wielu zdjęć, symulowany lot, komenda `symulacja` |
 | `test_gui_flight.py` | 6 | zakładka 4 interfejsu (Streamlit AppTest): lot z detekcją, kafelki według dni, tryb kamery drona |
 

@@ -1,5 +1,5 @@
 {
-  "detektor": "YOLO(modele_dane_ewis1_bt/model.pt)",
+  "detektor": "YOLO(models/weights/fieldeye_final.pt)",
   "split": "test",
   "obrazow": 26,
   "AP50": 0.6958,

@@ -282,32 +282,25 @@ def ocen(mozaika, oryginal, prawda=None, outdir=None, max_wymiar=1600):
 
 
 def werdykt(zgodne, skala, pokrycie, psnr):
-      """Zamienia liczby z oceny na krotki napis dla czlowieka.
+    """Zamienia liczby z oceny mozaiki na jedno zdanie: ZLE / CZESCIOWO / SLABO / DOBRZE / BARDZO DOBRZE.
 
-    Po co: zakladka 3 pokazuje pod mozaika jedno zdanie zamiast samych liczb.
-    Werdykt opiera sie glownie na skali i PSNR. Liczba par mowi tylko, na ile
-    ocena jest pewna - mala mozaika albo powtarzalne rzedy daja malo par nawet
-    przy poprawnym zlozeniu.
-    Kolejnosc sprawdzania (pierwszy pasujacy wygrywa):
-        par < 8 albo skala poza 0.85-1.15 -> ZLE
-        pokrycie < 70%                    -> CZESCIOWO
-        PSNR < 20 dB                      -> SLABO
-        PSNR 20-25 dB                     -> DOBRZE
-        PSNR >= 25 dB                     -> BARDZO DOBRZE
-    Przy mniej niz 20 parach dopisek "(niska pewnosc oceny - malo par)".
+    Po co: zeby w aplikacji od razu bylo widac, czy mozaika wyszla, bez czytania liczb.
+           Werdykt opiera sie glownie na skali i PSNR. Liczba par mowi tylko, na ile ocena
+           jest pewna - mala mozaika albo powtarzalne rzedy daja malo par nawet przy
+           poprawnym zlozeniu.
 
     Argumenty:
-        zgodne   - liczba par potwierdzajacych dopasowanie (z ocen())
-        skala    - skala mozaiki wzgledem oryginalu (~1.0 = dobrze)
-        pokrycie - czesc przelecianego terenu na mozaice (0-1)
-        psnr     - zgodnosc pikseli w dB
+        zgodne   - liczba par punktow mozaika <-> oryginal po RANSAC, np. 235
+        skala    - skala mozaiki wzgledem oryginalu (1.0 = idealnie), np. 1.0185
+        pokrycie - jaka czesc obszaru lotu pokrywa mozaika, 0-1, np. 0.9991
+        psnr     - podobienstwo mozaiki do oryginalu w dB (wiecej = lepiej), np. 23.27
 
     Zwraca:
         str, np. "DOBRZE - drobne niedokladnosci na szwach"
-        (lot z zakladki 1: 235 par, skala 1.02, pokrycie 99.9%, PSNR 23.3 dB)
+        (z dopiskiem "  (niska pewnosc oceny - malo par)", gdy zgodne < 20)
 
     Uzywana w:
-        ocen() (evaluation.py) - pole "werdykt" w wyniku; wyswietlane w zakladce 3
+        ocen() (stitchlive/evaluation.py) - pole "werdykt" w wyniku oceny
     """
     if zgodne < 8 or not (0.85 < skala < 1.15):
         return "ZLE - mozaika nie odpowiada oryginalowi"

@@ -1,5 +1,5 @@
 {
-  "detektor": "TTA(YOLO(modele_dane_ewis1_bt/model.pt))",
+  "detektor": "TTA(YOLO(models/weights/fieldeye_final.pt))",
   "split": "test",
   "obrazow": 132,
   "AP50": 0.8167,

@@ -28,7 +28,7 @@ i nanoszenie ich na mapę pola.
 | symulator | lot z kamerą drona (5 m, Arducam), kafelki 1,5 m, rozmycie ruchem, porównanie z prawdziwymi ramkami |
 | składanie | metoda `global` (własna), PSNR 22–25 dB na symulowanych lotach |
 | Hailo-8 | `HailoDetector`, ocena `.hef`, instrukcja kompilacji; plik `.hef` jeszcze nieskompilowany |
-| w toku | nowe dane (EWIS1, PhenoBench), drugi test na innym polu (`scripts/ewis1_test.sh`) |
+| w toku | nowe dane (EWIS1, PhenoBench), drugi test na innym polu (`scripts/final_model.sh`) |
 | testy | 253, wszystkie przechodzą (`tests/README.md`) |
 
 Nazwy pakietów, plików i klas są angielskie, opisy po polsku; tabela starych
@@ -37,7 +37,8 @@ i nowych nazw: `NAZWY.md`.
 ## Szybki start
 
 ```bash
-bash scripts/setup_mac.sh && source .venv/bin/activate
+python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
+caffeinate -i bash scripts/final_model.sh
 python -m pytest tests -q
 streamlit run app.py
 ```
@@ -506,7 +507,7 @@ Nazwy pakietów, plików i klas są angielskie; tabela starych i nowych nazw jes
 | trening, ocena modelu | **działa** — Windows (CUDA) i Mac (MPS) |
 | eksport ONNX | działa, z kontrolą zgodności z `.pt` |
 | Hailo-8: `HailoDetector`, ocena `.hef` | kod napisany i przetestowany bez sprzętu; **plik `.hef` jeszcze nieskompilowany** |
-| test na innym polu i kamerze RGB | w toku (`scripts/ewis1_test.sh`) |
+| test na innym polu i kamerze RGB | w toku (`scripts/final_model.sh`) |
 | georeferencja mozaiki (world file) | **niezrobione** |
 | korekta przechylenia z IMU | odczytywane, **nieużywane** |
 
