@@ -224,11 +224,14 @@ dataset images and keep the CC BY licences of their datasets (authors in the tab
 
 ## Quick start
 
+Python 3.9 or newer (tested with 3.13 and 3.14; the on-drone part also with 3.11, as on the Pi).
+The libraries take about 6 GB, mostly PyTorch, which comes with Ultralytics.
+
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
-python -m pytest tests -q                    # ~215 tests, 1–3 min, no data needed
+python -m pytest tests -q                    # ~215 tests, a few minutes, no data needed
 streamlit run app.py                         # GUI in the browser
 caffeinate -i bash scripts/final_model.sh    # rebuild the final model from raw data (~4 h, needs dane/)
 ```
@@ -239,9 +242,22 @@ Detection on a folder of drone photos (with `.geojson` telemetry next to them):
 python -m mission.detect_cli PHOTOS RESULTS models/weights/fieldeye_final.pt
 ```
 
+No drone photos yet? The simulated drone writes photos and telemetry exactly like the real one:
+
+```bash
+python -m mission.drone_sim /tmp/lot --sztuczne --interwal 0
+python -m mission.detect_cli /tmp/lot /tmp/wyniki models/weights/fieldeye_final.pt --raz
+python -m mission.spray_map /tmp/wyniki/oprysk.geojson /tmp/lot_prawda.geojson
+```
+
+The synthetic field only checks that the chain works (its green blobs are not real weeds). With
+the datasets built, use a real EWIS1 test photo instead: `--ewis1 zbior_ewis1_podzial/dataset/images/test`
+in place of `--sztuczne`.
+
 On the drone's Raspberry Pi the same program runs as one binary file: [`docs/raspberry-pi.md`](docs/raspberry-pi.md).
 
-On Windows use `py -m ...` instead of `python -m ...`. `caffeinate -i` only keeps a Mac awake.
+On Windows use `py -m ...` instead of `python -m ...`, activate the environment with
+`.venv\Scripts\activate` and use another folder instead of `/tmp`. `caffeinate -i` only keeps a Mac awake.
 
 ---
 

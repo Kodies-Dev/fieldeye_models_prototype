@@ -26,6 +26,8 @@ plan_*.json
 wyniki/**
 !wyniki/**/
 !wyniki/**/*.json
+# raport z `make demo` (stitchlive -o wyniki) - nie do gita
+/wyniki/raport.json
 analiza_*/
 log_*.txt
 *.log

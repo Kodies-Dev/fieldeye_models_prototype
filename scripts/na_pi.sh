@@ -75,7 +75,7 @@ na_zywo() {
   "$PY" -m mission.drone_sim /tmp/fieldeye_live --ewis1 "$KAF" --interwal 0.7 > /dev/null 2>&1
   wait $det
   trap - EXIT
-  grep -E "IMG_" /tmp/fieldeye_live.log | tail -3 | cut -c1-140
+  grep -E "\.jpg " /tmp/fieldeye_live.log | tail -3 | cut -c1-140
   tail -2 /tmp/fieldeye_live.log
   local maks
   maks="$(grep -oE 'w kolejce: [0-9]+' /tmp/fieldeye_live.log | awk '{print $3}' | sort -n | tail -1)"
