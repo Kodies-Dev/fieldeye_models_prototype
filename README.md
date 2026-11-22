@@ -86,7 +86,7 @@ The detected weeds from this flight, exactly as `fieldeye-detect` writes them (`
 GitHub shows it on a map, click a point to see its properties):
 [`docs/example/oprysk_simulated.geojson`](docs/example/oprysk_simulated.geojson).
 **Its coordinates are made up:** the photo was placed at an arbitrary point (top-left corner
-50.255150, 19.033382) only so that it can be drawn on a map. They are not where the photo was
+50.288582, 18.677817) only so that it can be drawn on a map. They are not where the photo was
 taken; only the distances between points are real.
 
 Images: [EWIS1](https://doi.org/10.17632/6j5pxgf437.1) (N. Genze, M. Grieb, D. Grimm, CC BY 4.0)
