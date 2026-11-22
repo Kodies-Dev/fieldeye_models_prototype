@@ -51,6 +51,7 @@ can be stopped and started again.
 | `na_pi.sh` | on the Pi, inside the unpacked package: `sprawdz` (check setup), `test` (132 tiles through `.hef`), `gps` (simulated flight + spray map + scoring), `na-zywo` (photo every 0.7 s: does Hailo keep up), `binarka` (build and run the binary), `wszystko` (all) |
 
 Full description: [`docs/fieldeye-detect.md`](../docs/fieldeye-detect.md).
+Step by step on the Raspberry Pi: [`docs/raspberry-pi.md`](../docs/raspberry-pi.md).
 
 ---
 

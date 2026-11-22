@@ -218,6 +218,8 @@ Self-contained folder (binary, models, examples): `bash scripts/przygotuj_folder
 
 ## 7. Raspberry Pi
 
+Step-by-step guide (install, build, start on boot, inputs and outputs): [`raspberry-pi.md`](raspberry-pi.md).
+
 On the Mac: `bash scripts/spakuj_na_pi.sh --hef PATH/fieldeye_final_1280_h8.hef` →
 `~/Downloads/fieldeye_pi.zip` (code, HEF, 132 EWIS1 test tiles, `na_pi.sh`, `README_PI.txt`).
 Without `--hef` it looks for a `.hef` on disk and then inside `model_fin.zip`.

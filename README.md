@@ -193,6 +193,8 @@ Detection on a folder of drone photos (with `.geojson` telemetry next to them):
 python -m mission.detect_cli PHOTOS RESULTS models/weights/fieldeye_final.pt
 ```
 
+On the drone's Raspberry Pi the same program runs as one binary file: [`docs/raspberry-pi.md`](docs/raspberry-pi.md).
+
 On Windows use `py -m ...` instead of `python -m ...`. `caffeinate -i` only keeps a Mac awake.
 
 ---
@@ -209,6 +211,7 @@ On Windows use `py -m ...` instead of `python -m ...`. `caffeinate -i` only keep
 | [`scripts/`](scripts/README.md) | tooling | `final_model.sh` (everything for the model), Hailo compilation and check, binary build, Pi package, test-data generators |
 | [`tests/`](tests/README.md) | tests | ~215 automatic tests for every part |
 | [`docs/fieldeye-detect.md`](docs/fieldeye-detect.md) | deployment | full manual of the `fieldeye-detect` program: telemetry format, outputs, coordinates, binary, Raspberry Pi |
+| [`docs/raspberry-pi.md`](docs/raspberry-pi.md) | deployment | step by step on the Raspberry Pi: install, build the binary, run it in flight, what it needs and what it gives back |
 | `app.py` | GUI | Streamlit interface with four tabs (see below; inside: [`docs/gui.md`](docs/gui.md)) |
 | `wyniki/model_koncowy/` | results | evaluation of the final model: `ewis1.json`, `ewis1_tta.json`, `wg.json`, `wg_tta.json` |
 | `model_fin.zip` | deployment | compiled `fieldeye_final_1280_h8.hef` + a Word note on running it on the Pi |
