@@ -1,7 +1,7 @@
-# Detection and spray-map pipeline — how it works inside
+# Detection and weed-map pipeline — how it works inside
 
-How `fieldeye-detect` turns photos arriving from the drone into weed coordinates and spray
-points, and how the simulated drone feeds it on a laptop. Usage, options, telemetry format and
+How `fieldeye-detect` turns photos arriving from the drone into weed coordinates (one point
+per weed), and how the simulated drone feeds it on a laptop. Usage, options, telemetry format and
 outputs are in [`docs/fieldeye-detect.md`](../docs/fieldeye-detect.md) and
 [`README.md`](README.md); this page explains the flow and the hardest parts of the code.
 
@@ -29,7 +29,7 @@ detect_cli.main()
      tile = 1.5 m / GSD     the model sees weeds at its training scale
      przetworz()            imread → det.wykryj() → boxes ≥ threshold, sorted by confidence
      przechyl_st()          tilt > --maks-przechyl 5° → photo left off the map
-     MapaOprysku.dodaj_zdjecie()   box centre → metres → degrees → merge into spray points
+     MapaOprysku.dodaj_zdjecie()   box centre → metres → degrees → merge into one point per weed
      MapaOprysku.zapisz()   4 output files, atomically, after EVERY photo
      linia()                one line in the terminal; photo with boxes → RESULTS/ (atomic)
    zamknij()                releases the Hailo device at the end
@@ -206,7 +206,10 @@ At 50° N that is about 111 235 m and 71 260 m per degree. On a field of a few h
 the error of this approximation is a fraction of a millimetre — far below the GPS error — and
 the binary needs no projection library.
 
-### `MapaOprysku` — from detections to spray points (`spray_map.py`)
+### `MapaOprysku` — from detections to one point per weed (`spray_map.py`)
+
+`oprysk` / `spray` in the names (Polish / English: spraying) are kept from the code: the class
+builds the map of detected weeds.
 
 The same weed is seen on several overlapping photos. `dodaj_zdjecie(tele, name, W, H, boxes, gsd)`:
 
@@ -214,16 +217,16 @@ The same weed is seen on several overlapping photos. `dodaj_zdjecie(tele, name, 
 2. every box centre → `piksel_na_metry()` → added to the drone position → degrees; the detection
    is stored with its size (`max(w, h) · gsd`) and, if roll / pitch are known, a position
    uncertainty `agl · tan(tilt)`;
-3. `_scal()` looks for the **nearest** spray point within `promien_scalania_m` (0.10 m). Found →
+3. `_scal()` looks for the **nearest** point within `promien_scalania_m` (0.10 m). Found →
    the detection joins it; the point keeps `Σw`, `Σw·east`, `Σw·north` (w = confidence), so its
    position is the confidence-weighted mean, plus max confidence, max size, count and photo set.
    Not found → a new point.
 
-`punkty_oprysku()` gives each point a spray radius = half of its largest weed + 5 cm margin.
+`punkty_oprysku()` gives each point a radius = half of its largest weed + 5 cm margin.
 `zapisz()` writes `oprysk.geojson` (points), `oprysk.csv` (the same as a table), `chwasty.geojson`
 (every detection) and `trasa.geojson` (route line + photo positions), all atomically.
 
-### `porownaj()` — how accurate are the spray points (`spray_map.py`)
+### `porownaj()` — how accurate are the weed points (`spray_map.py`)
 
 For a simulated flight, where the true weed positions are known. Both point sets go into one local
 plane; all pairs closer than the radius (0.10 m) are sorted by distance and matched greedily from

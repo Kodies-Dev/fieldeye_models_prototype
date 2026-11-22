@@ -117,5 +117,5 @@ python3 -m mission.detect_cli PHOTOS RESULTS fieldeye_final_1280_h8.hef     # fr
 ```
 
 Defaults: threshold 0.15, tile 950 px (1.5 m of field from 5 m). With a `.hef` the network
-input size is built into the file. Full description (telemetry, spray map, Pi package):
+input size is built into the file. Full description (telemetry, weed map, Pi package):
 [`docs/fieldeye-detect.md`](../docs/fieldeye-detect.md).

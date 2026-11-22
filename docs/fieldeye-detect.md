@@ -1,14 +1,14 @@
-# fieldeye-detect: weed detection on drone photos and the spray map
+# fieldeye-detect: weed detection on drone photos and the weed map
 
 `fieldeye-detect` watches the folder where the drone saves photos, runs every new photo
 through the weed model and — when GPS telemetry is saved next to the photo — turns the
-detections into coordinates and builds a spray map. It runs from source (Python) and as a
+detections into coordinates and builds a map of detected weeds. It runs from source (Python) and as a
 binary, on macOS, Ubuntu and Raspberry Pi 5 with the Hailo-8 accelerator.
 
 ```
 camera + autopilot              folder PHOTOS                      fieldeye-detect                  folder RESULTS
 (drone, Raspberry Pi)   ──►   20261109T142859.998Z.jpg     ──►   tiles → model → geolocation   ──►   oprysk.geojson / oprysk.csv
-                              20261109T142859.998Z.geojson       → merging into spray points        chwasty.geojson, trasa.geojson
+                              20261109T142859.998Z.geojson       → merging into weed points         chwasty.geojson, trasa.geojson
                                                                                                      photos with boxes
 ```
 
@@ -70,7 +70,7 @@ Terminal line for every photo:
 [14:29:01] 20261109T142859.998Z.jpg   4624x3472   chwasty:   17   max 0.91   0.84 s   GPS 50.290049, 18.731013   oprysk: 15 pkt (+15)   (w kolejce: 1)
 ```
 
-`chwasty` = weeds found, `max` = highest confidence on the photo, `oprysk` = spray points on
+`chwasty` = weeds found, `max` = highest confidence on the photo, `oprysk` = detected weeds (points) on
 the map, `(w kolejce: N)` = photos waiting (a growing number means the model cannot keep up
 with the camera).
 
@@ -127,7 +127,7 @@ In the `RESULTS` folder, refreshed after every photo, written atomically:
 | File | When | Content |
 |---|---|---|
 | `<photo name>.jpg` | always | the photo with pink boxes around weeds |
-| `oprysk.geojson` | with telemetry | **spray points**: one point per weed; `id`, `promien_m` (radius), `pewnosc` (confidence), `liczba_wykryc` (detections), `liczba_zdjec` (photos) |
+| `oprysk.geojson` | with telemetry | **detected weeds**: one point per weed; `id`, `promien_m` (radius), `pewnosc` (confidence), `liczba_wykryc` (detections), `liczba_zdjec` (photos) |
 | `oprysk.csv` | with telemetry | the same as a table: `id,szerokosc,dlugosc,promien_m,pewnosc,liczba_zdjec` (latitude, longitude, ...) |
 | `chwasty.geojson` | with telemetry | every detection on every photo; `pewnosc`, `rozmiar_m`, `zdjecie`, `czas`, `niepewnosc_przechylu_m` |
 | `trasa.geojson` | with telemetry | drone route (line) and photo positions |
@@ -135,6 +135,9 @@ In the `RESULTS` folder, refreshed after every photo, written atomically:
 
 Drop the `.geojson` files onto [geojson.io](https://geojson.io) or open them in QGIS.
 Without telemetry there are only photos with boxes (no coordinates).
+
+The name `oprysk` (Polish: spraying) is kept from the code: these files hold the detected weeds.
+What to do with them (e.g. spraying) is decided on the drone / frontend side.
 
 ## 4. How coordinates are computed
 
@@ -152,8 +155,8 @@ Code: [`mission/spray_map.py`](../mission/spray_map.py).
    photo; at 50° latitude about 111 235 m per 1° of latitude and 71 260 m per 1° of longitude).
    Approximation error on a field of a few hundred metres: fractions of a millimetre.
 6. **Merging**: a detection closer than `--promien-scalania` to an existing point joins it
-   (position = confidence-weighted mean), otherwise it starts a new point. Spray radius = half of
-   the largest box + 5 cm.
+   (position = confidence-weighted mean), otherwise it starts a new point. Point radius = half of
+   the largest box + 5 cm margin.
 
 Example (telemetry from [`tests/dane`](../tests/dane/telemetria_dron.geojson), heading 90°): a weed
 at pixel (3100, 900) of a 4624 × 3472 photo at 0.623 mm/px → 0.521 m east and 0.491 m south of the
@@ -203,7 +206,7 @@ Result: `dist/fieldeye-detect`. The same binary has helper commands:
 ```bash
 ./fieldeye-detect PHOTOS RESULTS MODEL
 ./fieldeye-detect dron FOLDER --ewis1 TILES          # simulated drone (section 8)
-./fieldeye-detect porownaj OPRYSK TRUTH              # score spray points
+./fieldeye-detect porownaj OPRYSK TRUTH              # score detected weed points
 ```
 
 | Variant | `.onnx` | `.hef` | `.pt` |
@@ -262,10 +265,10 @@ to `flight_prawda.geojson`.
 Options: `--zaklocenia` (rotation, jitter, brightness), `--szum-gps-m 1.5` (GPS without RTK),
 `--szum-kursu-st`, `--numer N` (another EWIS1 photo), `--lat`/`--lon`, `--wysokosc`, `--seed`.
 
-`spray_map` compares spray points with the truth (hit: closer than 10 cm). Trial results
+`spray_map` compares the detected weed points with the truth (found: closer than 10 cm). Trial results
 (synthetic field):
 
-| Telemetry | Hits | Position error |
+| Telemetry | Found | Position error |
 |---|---|---|
 | perfect (also with rotation, jitter, altitude change) | 100% | about 0.1–0.2 cm |
 | GPS with RTK (±3 cm) | 100% | about 3 cm |

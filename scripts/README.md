@@ -44,11 +44,11 @@ can be stopped and started again.
 | File | What it does |
 |---|---|
 | `fieldeye-detect.sh` | photos in a folder → weed model → result in the terminal, from source (activates `.venv` itself) |
-| `fieldeye_detect_main.py` | entry point of the binary: detection, `dron` (simulated drone with GPS), `porownaj` (score spray points against ground truth) |
+| `fieldeye_detect_main.py` | entry point of the binary: detection, `dron` (simulated drone with GPS), `porownaj` (score detected weed points against ground truth) |
 | `build_binary.sh` | builds the binary with PyInstaller: `onnx` (Mac / Ubuntu, no PyTorch), `hailo` (Pi with `hailo-all`), `pt` (PyTorch); **build on the system it will run on** |
 | `przygotuj_folder.sh` | self-contained folder: binary + models + examples + `uruchom.sh`; no project or Python needed to run it |
 | `spakuj_na_pi.sh` | on the Mac: runs the binary tests and packs code, 132 EWIS1 test tiles and the `.hef` into `~/Downloads/fieldeye_pi.zip` |
-| `na_pi.sh` | on the Pi, inside the unpacked package: `sprawdz` (check setup), `test` (132 tiles through `.hef`), `gps` (simulated flight + spray map + scoring), `na-zywo` (photo every 0.7 s: does Hailo keep up), `binarka` (build and run the binary), `wszystko` (all) |
+| `na_pi.sh` | on the Pi, inside the unpacked package: `sprawdz` (check setup), `test` (132 tiles through `.hef`), `gps` (simulated flight + weed map + scoring), `na-zywo` (photo every 0.7 s: does Hailo keep up), `binarka` (build and run the binary), `wszystko` (all) |
 
 Full description: [`docs/fieldeye-detect.md`](../docs/fieldeye-detect.md).
 Step by step on the Raspberry Pi: [`docs/raspberry-pi.md`](../docs/raspberry-pi.md).

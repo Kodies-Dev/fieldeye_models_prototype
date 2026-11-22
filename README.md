@@ -2,14 +2,14 @@
 
 This repository is **only the AI-related software part** of the FIELDEYE project: the data,
 the weed detection model, its deployment on the drone's AI accelerator and the program that
-turns detections into spray coordinates, plus the simulator used to test all of it without a
+turns detections into weed coordinates, plus the simulator used to test all of it without a
 drone. The drone itself, its electronics and the integration on board are not part of this
 repository.
 
 In the drone system this software is an **external module that runs on the Raspberry Pi**
 (with the Hailo-8 accelerator) that will be mounted on the drone, next to the drone's own
 systems and not inside the flight controller. The drone's side gives it photos and telemetry through a folder;
-it gives back the spray map.
+it gives back the map of detected weeds.
 
 ---
 
@@ -18,15 +18,15 @@ it gives back the spray map.
 FIELDEYE is a student PBL (project-based learning) project at the Silesian University of
 Technology (Politechnika Śląska). The idea: a drone flies over a crop field at about 5 m, a
 camera photographs the field, and every photo is checked for weeds **during the flight**.
-Each detected weed gets GPS coordinates, so the farmer receives a map of the places that need
-spraying instead of spraying the whole field.
+Each detected weed gets GPS coordinates, so the weeds can be treated only where they are instead
+of spraying the whole field.
 
 | | |
 |---|---|
 | drone computer | Raspberry Pi 5 with the AI HAT+ (Hailo-8 accelerator, 26 TOPS) |
 | camera | Arducam 64MP Hawkeye, pointing straight down, flight altitude about 5 m |
 | telemetry | autopilot writes a GeoJSON file (position, heading, altitude, tilt) next to every photo |
-| result for the farmer | spray points as GeoJSON / CSV (coordinates, radius, confidence) |
+| result | detected weeds as GeoJSON / CSV (coordinates, radius, confidence); what to do with them (e.g. spraying) is decided on the drone / frontend side |
 
 Where this software sits in the drone system:
 
@@ -38,10 +38,10 @@ Where this software sits in the drone system:
                                                     │
                                                     ▼  photo folder: IMG.jpg + IMG.geojson
                                         THIS REPOSITORY — external module: fieldeye-detect
-                                        weeds on every photo → coordinates → spray points
+                                        weeds on every photo → coordinates → one point per weed
                                                     │
                                                     ▼
-                                        spray map (GeoJSON / CSV) → farmer / sprayer
+                                        map of detected weeds (GeoJSON / CSV) → drone / frontend side
 ```
 
 The team works in three subgroups:
@@ -103,7 +103,7 @@ cropped, resized and annotated with our model's detections. Full citations:
 | 1 | **Data normalization** — reads public weed datasets (each in its own format), unifies class names, removes duplicates, splits without leaks, cuts tiles at the drone's scale | [`normalization/`](normalization/README.md) | raw datasets in `dane/` → YOLO datasets `zbior_*/` |
 | 2 | **AI model** — YOLOv8n weed detector: training plan, training, evaluation per flight day, test-time augmentation | [`models/`](models/README.md) | YOLO datasets → `models/weights/fieldeye_final.pt` + results |
 | 3 | **Edge deployment (Hailo-8)** — export to ONNX, calibration images, INT8 compilation to `.hef`, accuracy check on the Pi | `models/export.py`, [`scripts/HAILO.md`](scripts/HAILO.md) | `.pt` → `.onnx` → `fieldeye_final_1280_h8.hef` |
-| 4 | **In-flight detection and spray map** — `fieldeye-detect`: watches the photo folder, detects weeds tile by tile, converts them to coordinates using the telemetry, merges them into spray points; also as a single-file binary | [`mission/`](mission/README.md), [`docs/fieldeye-detect.md`](docs/fieldeye-detect.md) | photos + GeoJSON telemetry → spray map (GeoJSON / CSV) |
+| 4 | **In-flight detection and weed map** — `fieldeye-detect`: watches the photo folder, detects weeds tile by tile, converts them to coordinates using the telemetry, merges them into one point per weed; also as a single-file binary | [`mission/`](mission/README.md), [`docs/fieldeye-detect.md`](docs/fieldeye-detect.md) | photos + GeoJSON telemetry → map of detected weeds (GeoJSON / CSV) |
 | 5 | **Flight simulator and mosaic** — cuts one large image into drone frames with realistic disturbances, stitches frames into a mosaic, drone camera model; simulated drone that writes photos + telemetry | [`stitchlive/`](stitchlive/README.md), `mission/drone_sim.py` | field image → frames + ground truth → mosaic |
 | 6 | **GUI** — Streamlit app for trying the simulator, the stitching and the detector | `app.py` | browser interface |
 | 7 | **Automation and tests** — one script for the whole model, binary build, Pi package; ~215 tests | [`scripts/`](scripts/README.md), [`tests/`](tests/README.md) | — |
@@ -126,7 +126,7 @@ cropped, resized and annotated with our model's detections. Full citations:
  DRONE                                                                 ▼        ▼
  photo + telemetry (.geojson) ─────────────────────────────► mission/ fieldeye-detect (binary on the Pi)
                                                                tiles → model → GPS coordinates
-                                                               → spray map (GeoJSON)
+                                                               → weed map (GeoJSON)
 
  LAPTOP TOOLS
  stitchlive/  flight simulator (cuts one big image into drone frames), mosaic stitching, camera model
@@ -143,7 +143,7 @@ datasets → training → evaluation on two test sets → ONNX package for the H
 | data normalization | [`normalization/PIPELINE.md`](normalization/PIPELINE.md) |
 | AI model | [`models/PIPELINE.md`](models/PIPELINE.md) |
 | Hailo-8 deployment | [`scripts/HAILO_PIPELINE.md`](scripts/HAILO_PIPELINE.md) |
-| in-flight detection and spray map | [`mission/PIPELINE.md`](mission/PIPELINE.md) |
+| in-flight detection and weed map | [`mission/PIPELINE.md`](mission/PIPELINE.md) |
 | flight simulator and mosaic | [`stitchlive/PIPELINE.md`](stitchlive/PIPELINE.md) |
 | GUI | [`docs/gui.md`](docs/gui.md) |
 
@@ -249,7 +249,7 @@ On Windows use `py -m ...` instead of `python -m ...`. `caffeinate -i` only keep
 | [`normalization/`](normalization/README.md) | data | public datasets (each in its own format) → YOLO datasets: adapters, class mapping, deduplication, leak-free split, tiling |
 | [`models/`](models/README.md) | model | training plan, training (Ultralytics), evaluation (AP50, per flight day), ONNX export, calibration images |
 | `models/weights/fieldeye_final.pt` | model | the final model (the only weights file kept in git) |
-| [`mission/`](mission/README.md) | deployment | `fieldeye-detect` (detection on new photos → spray map), detectors for `.pt` / `.onnx` / `.hef`, simulated drone |
+| [`mission/`](mission/README.md) | deployment | `fieldeye-detect` (detection on new photos → map of detected weeds), detectors for `.pt` / `.onnx` / `.hef`, simulated drone |
 | [`stitchlive/`](stitchlive/README.md) | simulator / mosaic | flight simulator, mosaic stitching (`global`, `detail`, `basic`), drone camera model |
 | [`scripts/`](scripts/README.md) | tooling | `final_model.sh` (everything for the model), Hailo compilation and check, binary build, Pi package, test-data generators |
 | [`tests/`](tests/README.md) | tests | ~215 automatic tests for every part |

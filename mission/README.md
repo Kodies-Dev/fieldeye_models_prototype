@@ -1,11 +1,11 @@
-# mission — weed detection during the flight and the spray map
+# mission — weed detection during the flight and the weed map
 
 **Part of the pipeline:** deployment (runs on the drone; uses the model from `models/`).
 
 On the drone a single program runs: **`fieldeye-detect`** (a binary on Raspberry Pi 5 +
 Hailo-8). It watches the folder where the drone saves photos, detects weeds on every new
 photo and — using the GeoJSON telemetry saved next to the photo — turns the detections into
-coordinates and spray points. Full manual (options, telemetry format, outputs, binary,
+coordinates (one point per weed). Full manual (options, telemetry format, outputs, binary,
 Raspberry Pi): [`docs/fieldeye-detect.md`](../docs/fieldeye-detect.md).
 How it works inside — flow, technologies, key functions explained: [`PIPELINE.md`](PIPELINE.md).
 
@@ -66,7 +66,7 @@ cover about **1.5 m of field** — the scale the model was trained on (Arducam 6
 | File | Role |
 |---|---|
 | `detect_cli.py` | the `fieldeye-detect` program: waits for complete new photos (FIFO by write time), runs the detector, reads telemetry, updates the map, writes photos with boxes and a terminal line per photo |
-| `spray_map.py` | telemetry: reading and sanity checks, GSD from altitude, pixel → metres → degrees in a local tangent plane (no `pyproj`), `MapaOprysku` merges detections into spray points and writes `oprysk.geojson`, `oprysk.csv`, `chwasty.geojson`, `trasa.geojson`; `porownaj()` scores spray points against ground truth |
+| `spray_map.py` | telemetry: reading and sanity checks, GSD from altitude, pixel → metres → degrees in a local tangent plane (no `pyproj`), `MapaOprysku` merges detections into one point per weed and writes `oprysk.geojson`, `oprysk.csv`, `chwasty.geojson`, `trasa.geojson`; `porownaj()` scores the weed points against ground truth |
 | `drone_sim.py` | simulated drone: flies over a field image (EWIS1 photo rebuilt from tiles, any image or a synthetic field) and writes photos + telemetry in exactly the format of the real drone, plus the true weed positions |
 | `detector.py` | the detectors above, `letterbox()`, Hailo NMS decoding, WBF, `iou_ramek()` |
 | `sim_flight.py` | helpers for tab 4 of `app.py`: field from tiles of one day, true boxes in a frame, merging repeated boxes on the mosaic, comparison with ground truth; EWIS1 photo rebuilt from its tiles (used by `drone_sim --ewis1`) |

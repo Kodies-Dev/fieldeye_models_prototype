@@ -23,7 +23,7 @@ checks the error message shown when the library is missing).
 | `test_compile_hef.py` | 4 | Hailo | `compile_hef.py` without the compiler: NMS configuration for 1280, model script patching, RGB calibration images |
 | `test_inference.py` | 10 | deployment | IoU, WBF, TTA flip returns boxes to the same place, tiles (offsets and overlap duplicates), dummy detector, `zbuduj_z_plikow` |
 | `test_detect_cli.py` | 9 | deployment | `fieldeye-detect`: complete vs. truncated JPEG, waiting for a stable file, hidden/temporary files skipped, FIFO by write time, outputs, arguments |
-| `test_spray_map.py` | 14 | deployment | telemetry format of the real drone, heading rules, missing GPS fix, tilt limits, pixel → metres, merging into spray points, full chain drone → detection → spray map → scoring |
+| `test_spray_map.py` | 14 | deployment | telemetry format of the real drone, heading rules, missing GPS fix, tilt limits, pixel → metres, merging into one point per weed, full chain drone → detection → weed map → scoring |
 | `test_binary.py` | 6 | deployment | ONNX detector, model next to the binary, no heavy libraries imported, `dron` / `porownaj` commands, syntax of the shell scripts |
 | `test_sim_tiles.py` | 4 | simulator | EWIS1 photo rebuilt from its tiles pixel-exact, a weed from the tile overlap becomes one box |
 | `test_gui_flight.py` | 5 | GUI | tab 4 of `app.py` (Streamlit AppTest): flight with detection, tiles grouped by day, drone camera mode |
@@ -41,4 +41,4 @@ the real drone (the reference for `mission/spray_map.py`).
 Test inputs are built from a **known** image or from known boxes, so the correct result is
 known in advance. Tests check not only that the code runs, but that the result matches the
 truth — e.g. the position of a box after mapping back, the PSNR of a mosaic, or the distance
-of a spray point from the true weed.
+of a detected weed point from the true weed.

@@ -17,7 +17,7 @@ bash scripts/build_binary.sh hailo                                     │
 ~/fieldeye-bin/fieldeye-detect                                         │
 ~/fieldeye-bin/fieldeye_final_1280_h8.hef                              ▼
 (the repository is no longer needed)                     RESULTS/: photos with boxes,
-                                                           oprysk.geojson / oprysk.csv (spray map)
+                                                           oprysk.geojson / oprysk.csv (weed map)
 ```
 
 At run time the program needs **no Python, no libraries and no project folder** — only the
@@ -81,7 +81,7 @@ python3 -m mission.detect_cli /tmp/lot /tmp/wyniki fieldeye_final_1280_h8.hef --
 python3 -m mission.spray_map /tmp/wyniki/oprysk.geojson /tmp/lot_prawda.geojson
 ```
 
-This checks the whole chain — Hailo, telemetry, coordinates, spray map. The synthetic field has
+This checks the whole chain — Hailo, telemetry, coordinates, weed map. The synthetic field has
 no real weeds, so the counts say nothing about the model's accuracy (that is
 `bash scripts/check_hef.sh` with the EWIS1 test tiles, [`scripts/HAILO.md`](../scripts/HAILO.md)).
 
@@ -128,7 +128,7 @@ third argument).
 ```
 fieldeye-detect PHOTOS [RESULTS] [MODEL] [options]     detection (the normal mode)
 fieldeye-detect dron FOLDER [options]                  simulated drone (tests without a drone)
-fieldeye-detect porownaj OPRYSK PRAWDA                 score spray points against true weeds
+fieldeye-detect porownaj OPRYSK PRAWDA                 score detected weed points against true weeds
 ```
 
 During the flight:
@@ -160,7 +160,7 @@ Most useful options (all of them: `fieldeye-detect --help`, or
 | `--tylko-nowe` | off | ignore photos that were already in the folder at start |
 | `--timeout S` | — | exit after S seconds without a new photo |
 | `--maks-przechyl DEG` | 5 | photos tilted more than this are left off the map |
-| `--promien-scalania M` | 0.10 | detections closer than this are one weed (one spray point) |
+| `--promien-scalania M` | 0.10 | detections closer than this are one weed (one point on the map) |
 | `--czekaj-telemetrie S` | 3 | how long to wait for a photo's `.geojson` before processing it without GPS |
 | `--kurs-domyslny DEG` | — | heading to assume when telemetry has none (tests only) |
 | `--json` | off | standard output: only one JSON line per photo, for another program |
@@ -226,7 +226,7 @@ camera pointing straight down.
 ```
 
 `chwasty` = weeds found, `max` = highest confidence, the time per photo, the drone position,
-`oprysk` = spray points so far, `w kolejce` = photos waiting (if it keeps growing, the Pi does not
+`oprysk` = detected weeds (points) so far, `w kolejce` = photos waiting (if it keeps growing, the Pi does not
 keep up with the camera). Messages are in Polish; the table in
 [`fieldeye-detect.md`, section 5](fieldeye-detect.md#5-safeguards) translates them.
 
@@ -235,14 +235,16 @@ keep up with the camera). Messages are in Polish; the table in
 | File | Content |
 |---|---|
 | `<photo name>.jpg` | the photo with pink boxes around the weeds |
-| `oprysk.geojson` | **spray points** — one point per weed even if it was on several photos; `promien_m` (spray radius), `pewnosc` (confidence), `liczba_zdjec` (photos) |
+| `oprysk.geojson` | **detected weeds** — one point per weed even if it was on several photos; `promien_m` (radius: half the weed + 5 cm), `pewnosc` (confidence), `liczba_zdjec` (photos) |
 | `oprysk.csv` | the same as a table: `id,szerokosc,dlugosc,promien_m,pewnosc,liczba_zdjec` (latitude, longitude, ...) |
 | `chwasty.geojson` | every single detection on every photo |
 | `trasa.geojson` | the drone's route and the photo positions |
 | `wyniki.jsonl` | with `--jsonl`: one line per photo with boxes in pixels and coordinates |
 
 Without telemetry only the photos with boxes are written. The `.geojson` files open on
-[geojson.io](https://geojson.io) or in QGIS; `oprysk.csv` is what goes to the farmer / sprayer.
+[geojson.io](https://geojson.io) or in QGIS; `oprysk.csv` is the same list as a table.
+The name `oprysk` (Polish: spraying) is kept from the code: these files hold the detected weeds.
+What to do with them (e.g. spraying) is decided on the drone / frontend side.
 
 **For another program** (`--json`): standard output carries one JSON object per photo —
 `plik`, `szer`, `wys`, `chwasty`, `sekundy`, `wykrycia` (`[x0, y0, x1, y1, confidence]` in

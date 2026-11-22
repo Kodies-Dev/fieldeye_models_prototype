@@ -14,7 +14,7 @@ The package does three things:
 How it works inside — flow, technologies, key functions explained: [`PIPELINE.md`](PIPELINE.md).
 
 This is "Program 1" of the project plan: checking whether the material can be stitched at all.
-Geo-referencing the mosaic is out of scope (spraying uses per-photo coordinates, see `mission/`).
+Geo-referencing the mosaic is out of scope (weed coordinates come from the telemetry of each photo, see `mission/`).
 
 ---
 
