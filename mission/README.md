@@ -1,91 +1,83 @@
-# mission — detekcja chwastów w locie i mapa oprysku
+# mission — weed detection during the flight and the spray map
 
-Na dronie działa jeden program: **`fieldeye-detect`** (binarka na Raspberry Pi 5 + Hailo-8).
-Obserwuje folder, do którego dron zapisuje zdjęcia, wykrywa chwasty na każdym nowym zdjęciu
-i — z telemetrii GeoJSON leżącej obok zdjęcia — zamienia wykrycia na współrzędne i punkty oprysku.
-Pełny opis (uruchamianie, format telemetrii, wyniki, binarka, Raspberry Pi):
-[`docs/fieldeye-detect.md`](../docs/fieldeye-detect.md).
+**Part of the pipeline:** deployment (runs on the drone; uses the model from `models/`).
+
+On the drone a single program runs: **`fieldeye-detect`** (a binary on Raspberry Pi 5 +
+Hailo-8). It watches the folder where the drone saves photos, detects weeds on every new
+photo and — using the GeoJSON telemetry saved next to the photo — turns the detections into
+coordinates and spray points. Full manual (options, telemetry format, outputs, binary,
+Raspberry Pi): [`docs/fieldeye-detect.md`](../docs/fieldeye-detect.md).
 
 ```bash
-python -m mission.detect_cli ZDJECIA WYNIKI models/weights/fieldeye_final.pt    # ze źródeł
-./fieldeye-detect ZDJECIA WYNIKI fieldeye_final_1280_h8.hef                     # binarka na Pi
-python -m mission.drone_sim lot/ --ewis1 zbior_ewis1_podzial/dataset/images/test # symulowany dron
+python -m mission.detect_cli PHOTOS RESULTS models/weights/fieldeye_final.pt      # from source
+./fieldeye-detect PHOTOS RESULTS fieldeye_final_1280_h8.hef                        # binary on the Pi
+python -m mission.drone_sim flight/ --ewis1 zbior_ewis1_podzial/dataset/images/test  # simulated drone
 ```
 
 ---
 
-## Mapowanie nie wymaga mozaiki
+## Mapping does not need a mosaic
 
-Żeby nanieść chwast na mapę, **nie trzeba składać zdjęć**. Wystarczy pozycja GPS, kurs
-i wysokość tego jednego zdjęcia:
+To put a weed on the map **no stitching is needed** — the GPS position, heading and altitude
+of that one photo are enough:
 
 ```
-piksel w kadrze
-   → przesunięcie od środka kadru w pikselach
-   → × GSD (metry na piksel, z wysokości i optyki)
-   → obrót o kurs drona
-   → dodanie do pozycji GPS
-   → współrzędne geograficzne
+pixel in the photo
+   → offset from the photo centre in pixels
+   → × GSD (metres per pixel, from altitude and camera optics)
+   → rotation by the drone heading
+   → added to the GPS position
+   → geographic coordinates
 ```
 
-Dzięki temu każde zdjęcie jest przetwarzane osobno, zaraz po zrobieniu, ze stałą zajętością
-pamięci, a wyniki są dopisywane na bieżąco (awaria zasilania nie kasuje misji).
+So every photo is processed on its own, right after it is taken, with constant memory use,
+and results are written after every photo (a power loss does not erase the mission).
 
 ---
 
-## Detektor
+## Detectors
 
-Wymienny — reszta programu nie wie, jakiego modelu używa. Wszystkie klasy są w `detector.py`
-i zwracają te same obiekty `Detection`.
+Interchangeable — the rest of the program does not know which model it uses. All classes are
+in `detector.py` and return the same `Detection` objects.
 
-| Klasa | Do czego |
+| Class | Used for |
 |---|---|
-| `YoloDetector` | model `.pt` przez Ultralytics (komputer) |
-| `OnnxDetector` | model `.onnx` przez ONNX Runtime — bez PyTorcha (lekka binarka) |
-| `HailoDetector` | model `.hef` na akceleratorze Hailo-8; sam robi *letterbox* i przelicza ramki z NMS Hailo |
-| `TiledDetector` | opakowanie: tnie zdjęcie na kafelki, scala wyniki, usuwa duplikaty z zakładki |
-| `FlipTTADetector` | opakowanie: oryginał + odbicie poziome, łączone przez WBF (TTA) |
-| `DummyDetector` | **nie jest detektorem chwastów** — plamy zieleni, tylko do sprawdzenia potoku bez modelu (klasa `atrapa`) |
+| `YoloDetector` | `.pt` model through Ultralytics (laptop) |
+| `OnnxDetector` | `.onnx` model through ONNX Runtime — no PyTorch (light binary) |
+| `HailoDetector` | `.hef` model on the Hailo-8 accelerator; does its own letterbox and decodes Hailo's NMS output |
+| `TiledDetector` | wrapper: cuts the photo into tiles, maps boxes back, removes duplicates from tile overlaps (NMS) |
+| `FlipTTADetector` | wrapper: original + horizontal flip, merged by weighted box fusion (TTA) |
+| `DummyDetector` | **not a weed detector** — finds green blobs; only to test the pipeline without a model (class `atrapa`) |
 
-`zbuduj_z_plikow(model, tta=...)` wybiera klasę po rozszerzeniu pliku (`.hef` → Hailo,
-`.onnx` → ONNX Runtime, reszta → Ultralytics). `iou_ramek()` to jedyne liczenie IoU
-w projekcie (używa go też `models/evaluation.py`).
+`zbuduj_z_plikow(model, tta=...)` picks the class from the file extension (`.hef` → Hailo,
+`.onnx` → ONNX Runtime, otherwise Ultralytics). `iou_ramek()` is the single IoU function of the
+project (also used by `models/evaluation.py`).
 
-**Po co kafelkowanie.** Zdjęcie z kamery ma kilka tysięcy pikseli, wejście sieci 1280 px.
-Zmniejszenie całego zdjęcia sprawia, że kilkunastopikselowy chwast znika. Kafelek dobiera się
-tak, żeby obejmował ok. **1,5 m pola** — na takiej skali uczył się model (Arducam 64MP,
-tryb 16 MP, 5 m: ok. 950 px; `stitchlive/camera.py`).
-
----
-
-## Symulowany lot w interfejsie
-
-`sim_flight.py` — funkcje zakładki 4 w `app.py`: pole z kafelków jednego dnia WeedsGalore
-(`pole_z_kafelkow`), prawdziwe ramki w kadrze, scalanie powtórzeń na mozaice i porównanie
-z prawdą. Zdjęcie EWIS1 złożone z powrotem z kafelków co do piksela (`zdjecia_z_kafelkow`,
-`pole_ze_zdjecia`) wykorzystuje symulowany dron (`drone_sim --ewis1`).
+**Why tiles.** A camera photo has several thousand pixels, the network input is 1280 px.
+Shrinking the whole photo makes a seedling of a dozen pixels disappear. A tile is chosen to
+cover about **1.5 m of field** — the scale the model was trained on (Arducam 64MP, 16 MP mode,
+5 m: about 950 px; `stitchlive/camera.py`).
 
 ---
 
-## Ograniczenia
+## Files
 
-- **Zakłada nadir i płaski teren.** Przechył z autopilota służy tylko do odrzucania zdjęć ponad limit.
-- **Dokładność ograniczona przez GPS**, nie przez obliczenia. Bez korekcji ok. 1–2 m; RTK dałby centymetry.
-- **Wysokość musi być nad terenem**, nie nad poziomem morza.
-- **Brak korekty zniekształceń obiektywu.** Przy szerokim kącie błąd rośnie ku brzegom kadru.
+| File | Role |
+|---|---|
+| `detect_cli.py` | the `fieldeye-detect` program: waits for complete new photos (FIFO by write time), runs the detector, reads telemetry, updates the map, writes photos with boxes and a terminal line per photo |
+| `spray_map.py` | telemetry: reading and sanity checks, GSD from altitude, pixel → metres → degrees in a local tangent plane (no `pyproj`), `MapaOprysku` merges detections into spray points and writes `oprysk.geojson`, `oprysk.csv`, `chwasty.geojson`, `trasa.geojson`; `porownaj()` scores spray points against ground truth |
+| `drone_sim.py` | simulated drone: flies over a field image (EWIS1 photo rebuilt from tiles, any image or a synthetic field) and writes photos + telemetry in exactly the format of the real drone, plus the true weed positions |
+| `detector.py` | the detectors above, `letterbox()`, Hailo NMS decoding, WBF, `iou_ramek()` |
+| `sim_flight.py` | helpers for tab 4 of `app.py`: field from tiles of one day, true boxes in a frame, merging repeated boxes on the mosaic, comparison with ground truth; EWIS1 photo rebuilt from its tiles (used by `drone_sim --ewis1`) |
 
 ---
 
-## Struktura
+## Limitations
 
-```
-mission/
-├── detect_cli.py     fieldeye-detect: nowe zdjęcia → detekcja → mapa oprysku
-├── spray_map.py      telemetria GeoJSON → współrzędne → punkty oprysku (bez pyproj)
-├── drone_sim.py      symulowany dron: zdjęcia + telemetria jak z prawdziwego drona
-├── detector.py       .pt / .onnx / .hef, kafelki, TTA, atrapa, iou_ramek()
-└── sim_flight.py     symulowany lot w zakładce 4 app.py
-```
+- **Nadir camera and flat field.** Roll/pitch from the autopilot are only used to reject photos above a limit.
+- **Accuracy is limited by GPS**, not by the computation: about 1 m without RTK, a few cm with RTK.
+- **Altitude must be above the field**, not above sea level.
+- **No lens distortion correction**; with a wide lens the error grows towards the photo edges.
 
-Testy: `tests/test_detect_cli.py`, `test_spray_map.py`, `test_binary.py`, `test_hailo.py`,
+Tests: `tests/test_detect_cli.py`, `test_spray_map.py`, `test_binary.py`, `test_hailo.py`,
 `test_inference.py`, `test_sim_tiles.py`, `test_gui_flight.py`.

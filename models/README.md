@@ -1,84 +1,88 @@
-# models — trening, ocena i eksport detektora chwastów
+# models — training, evaluation and export of the weed detector
 
-Bierze zbiory z `normalization/`, trenuje YOLOv8n z jedną klasą „chwast”,
-ocenia go (także osobno dla każdego dnia lotu) i eksportuje do ONNX, z którego
-na końcu powstaje plik `.hef` dla Hailo-8 (`scripts/HAILO.md`).
+**Part of the pipeline:** model (after `normalization/`, before `mission/` and Hailo).
+
+Takes the YOLO datasets from `normalization/`, trains YOLOv8n with one class "weed"
+(`chwast`), evaluates it — also separately for every flight day — and exports it to ONNX,
+from which the Hailo-8 `.hef` file is compiled (`scripts/HAILO.md`).
+
+Steps 2–4 of `scripts/final_model.sh` use this package.
 
 ---
 
-## Model końcowy
+## Final model
 
 | | |
 |---|---|
-| plik | `models/weights/fieldeye_final.pt` (w eksperymentach: `modele_dane_ewis1_bt/model.pt`) |
-| architektura | YOLOv8n, jedna klasa „chwast”, wejście 1280 |
-| dane treningowe | WeedsGalore (z nadpróbkowaniem: 25 maja ×3, 30 maja ×2) + Sudars + EWIS1 kukurydza bez dnia 16.05.2022 — 1866 kafelków |
-| trening | 100 epok, SGD, lr0 0,01, batch 16, cierpliwość 30 |
-| uruchamianie | **TTA**: oryginał + odbicie poziome, łączone przez WBF; próg 0,15 |
-| odtworzenie | `bash scripts/final_model.sh` |
+| file | `models/weights/fieldeye_final.pt` (experiment name: `dane_ewis1_bt`) |
+| architecture | YOLOv8n, one class "weed", input 1280 px |
+| training data | WeedsGalore (oversampled: 25 May ×3, 30 May ×2) + Sudars + EWIS1 maize without 16 May 2022 — 1866 tiles |
+| validation / test | WeedsGalore only (validation picks the best epoch, so the model is chosen for the drone view) + held-out EWIS1 day |
+| training | 100 epochs, SGD, lr0 0.01, batch 16, patience 30, seed 0 |
+| inference | **TTA**: original + horizontal flip merged by weighted box fusion; threshold 0.15 |
+| reproduce | `bash scripts/final_model.sh` |
 
-| Test (z TTA) | AP50 | Czułość | Precyzja |
+| Test | AP50 | Recall | Precision |
 |---|---|---|---|
-| EWIS1, 16.05.2022 — zwykła kamera RGB, dzień niewidziany w treningu (132 kafelki, 4422 chwasty) | **0,817** | **78,4%** | **84,3%** |
-| WeedsGalore, cały sezon (26 kafelków, 1628 chwastów) | 0,714 | 69,2% | — |
-| WeedsGalore, 25 maja (najmłodsze siewki) | — | 32,2% | — |
+| EWIS1, 16 May 2022 — ordinary RGB camera, day never seen in training (132 tiles, 4422 weeds), with TTA | **0.817** | **78.4%** | **84.3%** |
+| EWIS1, same, without TTA | 0.812 | 79.1% | 81.1% |
+| WeedsGalore, whole season (26 tiles, 1628 weeds), with TTA | 0.714 | 69.2% | 64.0% |
+| WeedsGalore, 25 May (youngest seedlings), with TTA | — | 32.2% | 42.0% |
 
-AP50 liczy nasza funkcja `ap50()` (tak samo dla `.pt`, `.onnx` i `.hef`); mAP50 z walidacji
-Ultralytics wychodzi o ok. 1,5 pp niżej.
+AP50 is computed by our own `ap50()` (identical code for `.pt`, `.onnx` and `.hef`);
+Ultralytics' own validation mAP50 comes out about 1.5 pp lower.
 
-**Najważniejszy wniosek:** model uczony bez EWIS1 (WeedsGalore + Sudars) miał na WeedsGalore
-AP50 0,718, ale na zwykłym zdjęciu RGB tylko 0,044 (czułość 0,2%) — nauczył się wyglądu zdjęć
-z kamery multispektralnej. Dodanie EWIS1 do treningu rozwiązało problem bez straty na WeedsGalore.
+**Key finding:** a model trained without EWIS1 (WeedsGalore + Sudars) reached AP50 0.718 on
+WeedsGalore but only 0.044 on ordinary RGB photos (recall 0.2%) — it had learned the look of the
+multispectral camera. Adding EWIS1 to training fixed this without any loss on WeedsGalore.
 
 ---
 
-## Historia eksperymentów
+## Experiment history
 
-Wszystko na teście WeedsGalore, YOLOv8n, wejście 1280, 100 epok, o ile nie podano inaczej.
+WeedsGalore test, YOLOv8n, input 1280, 100 epochs unless stated otherwise.
 
-| Wariant | Wynik | Wniosek |
+| Variant | Result | Conclusion |
 |---|---|---|
-| 30 epok (Windows) | mAP50 0,567 | za krótko |
-| `wg100`: tylko WeedsGalore | mAP50 0,651; 25 maja 17–21% | punkt odniesienia |
-| YOLOv8s | mAP50 0,645 | +3,5 × obliczeń bez zysku: odrzucony |
-| Sudars, potem WeedsGalore (dwa etapy) | mAP50 0,572 / 0,624 | trening po kolei gorszy niż razem |
-| `wg_sudars`: WeedsGalore + Sudars razem | mAP50 0,659; 25 maja 27–28% | Sudars daje ok. +8 pp w maju |
-| test na całym nieznanym dniu (25 maja) | czułość 23–26% we wszystkich wariantach | model nie przenosi się na nieznaną, najwcześniejszą fazę |
-| **nadpróbkowanie maja** | AP50 +1,3–1,7 pp, maj +0,6–3,6 pp (2 ziarna) | **przyjęte** |
-| mniejszy `scale` w augmentacji | więcej fałszywych alarmów | odrzucone |
-| osobny model na maj (dostrojenie) | bez poprawy | odrzucone: jeden wspólny model |
-| próg osobno dla każdego dnia | maj 27 → 40%, ale fałszywe 111 → 499 | odrzucone: zostaje 0,15 |
-| **TTA** | AP50 +2,2–2,8 pp, fałszywe ok. −30% (2 ziarna) | **przyjęte** |
-| dwa modele naraz (ensemble) | jak TTA, ale 2 pliki HEF | odrzucone |
-| łączenie widoków, głosowanie, niski próg + głosowanie | brak zysku netto | odrzucone |
-| test na zwykłej kamerze RGB (EWIS1) | model bez EWIS1: AP50 0,044, czułość 0,2% | model nie przenosił się na zdjęcia RGB |
-| EWIS1 przerobiony na kolory WeedsGalore | AP50 0,224 | przyczyna głównie w kolorach kamery multispektralnej |
-| **+ EWIS1 w treningu** | **EWIS1 AP50 0,817**, WeedsGalore bez straty | **przyjęte: model końcowy** |
-| korekta kolorów WeedsGalore (sRGB) | EWIS1 +2 pp, 25 maja −5,7 pp | odrzucone |
-| wejście 640 zamiast 1280 | EWIS1 −3,7 pp, 25 maja −10,5 pp | zostaje 1280 |
-| + PhenoBench (przy 640) | EWIS1 +2,2 pp | niewielki zysk, poza modelem końcowym |
-| + sorgo z EWIS1 | bez zmian | odrzucone |
+| 30 epochs (Windows) | mAP50 0.567 | too short |
+| `wg100`: WeedsGalore only | mAP50 0.651; 25 May 17–21% | baseline |
+| YOLOv8s | mAP50 0.645 | 3.5× the compute, no gain: rejected |
+| Sudars first, then WeedsGalore (two stages) | mAP50 0.572 / 0.624 | sequential training worse than joint |
+| `wg_sudars`: WeedsGalore + Sudars together | mAP50 0.659; 25 May 27–28% | Sudars adds about +8 pp in May |
+| test on a whole unseen day (25 May) | recall 23–26% in all variants | the model does not transfer to an unseen earliest stage |
+| **oversampling May** | AP50 +1.3–1.7 pp, May +0.6–3.6 pp (2 seeds) | **accepted** |
+| smaller `scale` augmentation | more false alarms | rejected |
+| separate model for May (fine-tuning) | no improvement | rejected: one shared model |
+| threshold per day | May 27 → 40%, but false alarms 111 → 499 | rejected: 0.15 everywhere |
+| **TTA** | AP50 +2.2–2.8 pp, about −30% false alarms (2 seeds) | **accepted** |
+| two models at once (ensemble) | like TTA, but two HEF files | rejected |
+| multi-view fusion, voting, low threshold + voting | no net gain | rejected |
+| test on an ordinary RGB camera (EWIS1) | model without EWIS1: AP50 0.044, recall 0.2% | did not transfer to RGB photos |
+| EWIS1 converted to WeedsGalore colours | AP50 0.224 | the cause is mostly the multispectral colours |
+| **+ EWIS1 in training** | **EWIS1 AP50 0.817**, no loss on WeedsGalore | **accepted: final model** |
+| WeedsGalore colour correction (sRGB) | EWIS1 +2 pp, 25 May −5.7 pp | rejected |
+| input 640 instead of 1280 | EWIS1 −3.7 pp, 25 May −10.5 pp | keep 1280 |
+| + PhenoBench (at 640) | EWIS1 +2.2 pp | small gain, not in the final model |
+| + sorghum from EWIS1 | no change | rejected |
 
-Różnice do ok. 2 pp AP50 i ok. 4 pp czułości w maju (332 siewki) mieszczą się
-w zmienności między uruchomieniami, dlatego każdą poprawę potwierdzamy drugim ziarnem.
-
----
-
-## Zanim zaczniesz trenować
-
-```bash
-python -m models.cli srodowisko                         # biblioteki i urządzenie (CUDA / MPS / CPU)
-python -m models.cli sprawdz zbior_lotnicze/dataset/data.yaml
-```
-
-- `sprawdz`: katalogi, pliki etykiet, przeciek plików między częściami podziału.
+Differences up to about 2 pp AP50 and 4 pp recall in May (332 seedlings) are within the
+run-to-run noise, so every improvement was confirmed with a second seed.
 
 ---
 
-## Trening
+## Commands (`python -m models.cli ...`)
 
-Trening opisuje plan JSON. Wszystkie zbiory w jednym etapie, razem (plan modelu końcowego,
-zapisywany przez `scripts/final_model.sh`):
+| Command | Used by | What it does |
+|---|---|---|
+| `srodowisko` | you | library versions and the device training would use (CUDA → MPS → CPU) |
+| `sprawdz DATA.yaml` | you | checks a dataset before training: folders, missing labels, empty parts, file leaks between parts |
+| `nadprobkuj DATASET --waga DAY=N ... -o DATA.yaml` | final_model.sh step 2 | oversampling: copies training tiles of chosen days N times, adds other datasets' training parts |
+| `trenuj --plan PLAN.json -o FOLDER` | final_model.sh step 2 | training from a plan file → `FOLDER/model.pt` |
+| `ocen-detektor MODEL DATA.yaml [--tta]` | final_model.sh step 3, check_hef.sh | AP50, recall and precision at the threshold, per flight day — same code for `.pt`, `.onnx`, `.hef` |
+| `onnx MODEL.pt -o MODEL.onnx --wejscie 1280 --opset 11` | final_model.sh step 4 | export to ONNX with a fixed input (what the Hailo compiler needs) |
+| `kalibracja IMAGES -o FOLDER --liczba 128 --rozmiar 1280` | final_model.sh step 4 | calibration images for INT8 quantization, letterboxed to the network input |
+
+### Training plan
 
 ```json
 {"model_bazowy": "yolov8n.pt", "batch": 16, "cierpliwosc": 30, "seed": 0,
@@ -86,21 +90,17 @@ zapisywany przez `scripts/final_model.sh`):
             "epoki": 100, "lr0": 0.01, "wejscie": 1280}]}
 ```
 
-```bash
-caffeinate -i python -m models.cli trenuj --plan plan_dane_ewis1_bt.json -o modele_dane_ewis1_bt
-```
-
-| Pole planu | Znaczenie |
+| Field | Meaning |
 |---|---|
-| `model_bazowy` | wagi startowe (COCO albo inny model) |
-| `batch`, `cierpliwosc`, `seed` | porcja zdjęć, ile epok bez poprawy do zatrzymania, ziarno losowe |
-| `etapy[].dane` | `data.yaml`; `train` może być listą katalogów (kilka zbiorów naraz) |
-| `etapy[].augmentacje` | dodatkowe ustawienia augmentacji Ultralytics, np. `{"scale": 0.2}` |
+| `model_bazowy` | starting weights (COCO or another model) |
+| `batch`, `cierpliwosc`, `seed` | batch size, early-stopping patience in epochs, random seed |
+| `etapy[]` | stages; each starts from the weights of the previous one (the final model uses one stage) |
+| `etapy[].dane` | `data.yaml`; `train` may be a list of folders (several datasets at once) |
+| `etapy[].augmentacje` | extra Ultralytics augmentation settings, e.g. `{"degrees": 15}` |
 
-Optymalizator SGD jest ustawiony jawnie, bo przy `auto` Ultralytics ignoruje `lr0`.
-Walidacja i test zawsze z WeedsGalore; dodatkowe zbiory tylko do treningu.
+The optimizer is set to SGD explicitly, because with `auto` Ultralytics ignores `lr0`.
 
-### Nadpróbkowanie wczesnej fazy
+### Oversampling the early season
 
 ```bash
 python -m models.cli nadprobkuj zbior_lotnicze/dataset --waga 2023-05-25=3 --waga 2023-05-30=2 \
@@ -108,48 +108,32 @@ python -m models.cli nadprobkuj zbior_lotnicze/dataset --waga 2023-05-25=3 --wag
        -o zbior_lotnicze/dataset/data_dane_ewis1_bt.yaml
 ```
 
-Kopie kafelków treningowych trafiają do `images/train_nadprob` z inną nazwą;
-walidacja i test bez zmian.
+Copies go to `images/train_nadprob` under different names; validation and test are untouched.
+Running it again does not add more copies.
 
----
-
-## Ocena
+### Evaluation
 
 ```bash
 python -m models.cli ocen-detektor models/weights/fieldeye_final.pt zbior_ewis1_podzial/dataset/data.yaml --prog 0.15 --tta
 ```
 
-AP50, czułość i precyzja przy progu oraz wynik według dni **naszym kodem** – ten sam
-dla `.pt`, `.onnx` i `.hef`, więc wyniki z Maca i z Raspberry Pi są porównywalne.
-
-Daty w nazwach plików są rozpoznawane w formacie `2023-05-25` (WeedsGalore)
-i `20220509` (EWIS1).
+Dates in file names are recognised as `2023-05-25` (WeedsGalore) and `20220516` (EWIS1),
+which gives the per-day table.
 
 ---
 
-## Eksport i Hailo
+## Files
 
-```bash
-python -m models.cli onnx modele_X/model.pt -o hailo/model_640.onnx --wejscie 640 --opset 11
-python -m models.cli kalibracja zbior_lotnicze/dataset/images/train -o hailo/kalibracja_640 --liczba 104 --rozmiar 640
-python -m models.cli ocen-detektor hailo/model_640.onnx zbior_lotnicze/dataset/data.yaml --wejscie 640 --urzadzenie cpu
-```
+| File | Role |
+|---|---|
+| `cli.py` | command line (table above); every command is a `cmd_<name>()` function |
+| `plan.py` | `Stage`, `TrainingPlan` (read/write JSON or YAML), `katalog_etykiet()` (images → labels folder), `sprawdz_dane()` (dataset check) — no Ultralytics needed |
+| `training.py` | training stage by stage through Ultralytics; saves `plan.json`, `historia.json`, `model.pt` |
+| `evaluation.py` | own metrics: box matching, precision/recall at thresholds, `ap50()` (101-point, like Ultralytics), per-day results, `ocen_detektor()` for any detector |
+| `season.py` | `nadprobkuj()`: oversampling of early flight days |
+| `export.py` | `do_onnx()`, `przygotuj_kalibracje()` (letterboxed calibration images), `rozmiary()` (file size, INT8 estimate) |
+| `device.py` | device choice CUDA → MPS (Mac) → CPU; sets the MPS fallback before PyTorch is imported |
+| `weights/fieldeye_final.pt` | the final model |
 
-- stałe wejście i opset 11 to ustawienia zalecane przez kompilator Hailo,
-- zdjęcia kalibracyjne: tylko kafelki treningowe, wpisane w kwadrat wejścia sieci,
-- kompilacja do `.hef` (Linux x86, WSL) i sprawdzenie na Raspberry Pi: `scripts/HAILO.md`.
-
----
-
-## Struktura
-
-```
-models/
-├── plan.py         plan treningu, kontrola data.yaml          (bez ultralytics)
-├── device.py       wybór CUDA / MPS / CPU
-├── training.py     trening etap po etapie
-├── evaluation.py   AP50 naszym kodem, czułość i precyzja przy progu, wynik według dni
-├── season.py       nadpróbkowanie wczesnych dni
-├── export.py       ONNX, zbiór kalibracyjny
-└── cli.py          wiersz poleceń
-```
+Training needs `ultralytics` (AGPL-3.0 licence); the plan, the dataset check and the metrics
+work without it. Tests: `tests/test_models.py`, `test_season.py`, `test_hailo.py`.

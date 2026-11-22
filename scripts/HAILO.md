@@ -1,43 +1,45 @@
-# Model końcowy FIELDEYE na Hailo-8 (Raspberry Pi 5 + AI HAT+ 26 TOPS)
+# FIELDEYE final model on Hailo-8 (Raspberry Pi 5 + AI HAT+ 26 TOPS)
 
 | | |
 |---|---|
-| model | `models/weights/fieldeye_final.pt` (YOLOv8n, 1 klasa „chwast”, wejście 1280) |
-| HEF | `fieldeye_final_1280_h8.hef` (5,4 MB, Hailo-8, HailoRT 4.23) — w `model_fin.zip`, nie w gicie |
-| droga | `.pt` → ONNX + zdjęcia kalibracyjne (Mac) → HEF (WSL, Ubuntu 22.04) → uruchomienie (Raspberry Pi) |
+| model | `models/weights/fieldeye_final.pt` (YOLOv8n, 1 class "weed", input 1280) |
+| HEF | `fieldeye_final_1280_h8.hef` (5.4 MB, Hailo-8, HailoRT 4.23) — inside `model_fin.zip` (`*.hef` files are ignored by git) |
+| path | `.pt` → ONNX + calibration images (Mac) → HEF (WSL, Ubuntu 22.04) → run (Raspberry Pi) |
 
-HEF nie zastępuje `.pt`: trening, ocena i symulator na komputerze dalej używają `.pt`.
-Pełny opis z wynikami: dokument „FIELDEYE: model, konwersja do HEF, Raspberry Pi”.
+The HEF does not replace the `.pt`: training, evaluation and the simulator on a computer keep
+using the `.pt`.
 
 ---
 
-## 1. Mac: ONNX i zdjęcia kalibracyjne
+## 1. Mac: ONNX and calibration images
+
+Step 4 of `scripts/final_model.sh` does this and writes `hailo/hailo_final.zip`. By hand:
 
 ```bash
 mkdir -p hailo/final
 python -m models.cli onnx models/weights/fieldeye_final.pt -o hailo/final/fieldeye_final_1280.onnx --wejscie 1280 --opset 11
 
-rm -rf /tmp/kal_zrodlo && mkdir -p /tmp/kal_zrodlo
-cp zbior_lotnicze/dataset/images/train/*.jpg zbior_ewis1_podzial/dataset/images/train/*.jpg /tmp/kal_zrodlo/
-python -m models.cli kalibracja /tmp/kal_zrodlo -o hailo/final/kalibracja_1280 --liczba 128 --rozmiar 1280
+rm -rf /tmp/kal_src && mkdir -p /tmp/kal_src
+cp zbior_lotnicze/dataset/images/train/*.jpg zbior_ewis1_podzial/dataset/images/train/*.jpg /tmp/kal_src/
+python -m models.cli kalibracja /tmp/kal_src -o hailo/final/kalibracja_1280 --liczba 128 --rozmiar 1280
 cp scripts/compile_hef.py hailo/final/
 cd hailo/final && zip -r ~/Desktop/hailo_final.zip . && cd ../..
 ```
 
-- eksport ma wypisać wyjście `(1, 5, 33600)`; stałe wejście i opset 11 zaleca kompilator Hailo,
-- zdjęcia kalibracyjne tylko z części treningowej (WeedsGalore + EWIS1), nigdy z testu.
+- the export must print the output shape `(1, 5, 33600)`; a fixed input and opset 11 are what the Hailo compiler recommends,
+- calibration images come only from the training parts (WeedsGalore + EWIS1), never from a test set.
 
-## 2. WSL: kompilacja do HEF
+## 2. WSL: compilation to HEF
 
-Kompilator Hailo działa tylko na Linuksie x86: Windows + WSL z Ubuntu 22.04, Python 3.10,
-co najmniej 16 GB pamięci (RAM + wymiana, `.wslconfig`).
+The Hailo compiler runs only on Linux x86: Windows + WSL with Ubuntu 22.04, Python 3.10,
+at least 16 GB of memory (RAM + swap, `.wslconfig`).
 
-| Składnik | Wersja | Uwagi |
+| Component | Version | Notes |
 |---|---|---|
-| HailoRT na Raspberry Pi | 4.23.0 | kompilator musi być z tego samego wydania |
+| HailoRT on the Raspberry Pi | 4.23.0 | the compiler must come from the same release |
 | Hailo Dataflow Compiler | 3.33.0 | `hailo_dataflow_compiler-3.33.0-py3-none-linux_x86_64.whl` |
 | Hailo Model Zoo | 2.17.0 | `hailo_model_zoo-2.17.0-py3-none-any.whl` |
-| nie brać | 3.34.0 / 5.x | dla HailoRT 4.24 / dla Hailo-10 i Hailo-15 |
+| do not use | 3.34.0 / 5.x | for HailoRT 4.24 / for Hailo-10 and Hailo-15 |
 
 ```bash
 sudo apt install -y python3.10-venv python3-dev python3-tk graphviz graphviz-dev git build-essential
@@ -45,62 +47,75 @@ python3 -m venv ~/hailo_venv && source ~/hailo_venv/bin/activate
 pip install --upgrade pip wheel
 pip install hailo_dataflow_compiler-3.33.0-py3-none-linux_x86_64.whl hailo_model_zoo-2.17.0-py3-none-any.whl
 
-# pakiet Model Zoo nie zawiera konfiguracji NMS - dograć z gałęzi v2.17
+# the Model Zoo package lacks the NMS configs - copy them from the v2.17 branch
 git clone --depth 1 --branch v2.17 https://github.com/hailo-ai/hailo_model_zoo.git ~/hmz_src
 cp -r ~/hmz_src/hailo_model_zoo/cfg/postprocess_config ~/hailo_venv/lib/python3.10/site-packages/hailo_model_zoo/cfg/
 
-# kompilacja (po rozpakowaniu hailo_final.zip do ~/fieldeye/final)
+# compilation (after unpacking hailo_final.zip into ~/fieldeye/final)
 cd ~/fieldeye/final
-python compile_hef.py fieldeye_final_1280.onnx kalibracja_1280 -o fieldeye_final_1280_h8.hef --rozmiar 1280 2>&1 | tee kompilacja_final.log
+python compile_hef.py fieldeye_final_1280.onnx kalibracja_1280 -o fieldeye_final_1280_h8.hef --rozmiar 1280 2>&1 | tee compile_final.log
 ```
 
-**Dlaczego `compile_hef.py`, a nie samo `hailomz compile`:** konfiguracja NMS z Model Zoo ma obraz
-640, próg 0,2 i 100 ramek na klasę. Skrypt bierze z Model Zoo skrypt modelu YOLOv8n i wzór NMS,
-ustawia obraz 1280, 1 klasę, próg 0,05 i do 300 ramek, sześć końcowych warstw Conv głowicy
-(`/model.22/cv2.x`, `cv3.x`) i nazwę sieci `yolov8n` (do niej odwołuje się konfiguracja NMS).
+**Why `compile_hef.py` and not just `hailomz compile`:** the Model Zoo NMS config uses image
+size 640, threshold 0.2 and 100 boxes per class. The script takes the YOLOv8n model script and
+NMS template from Model Zoo and sets image 1280, 1 class, threshold 0.05 and up to 300 boxes,
+the six final Conv layers of the head (`/model.22/cv2.x`, `cv3.x`) and the network name
+`yolov8n` (the NMS config refers to it). Stages: parse → optimize (INT8 quantization on the
+calibration images) → compile; a `.har` file of each stage is kept.
 
-Model końcowy mieści się w jednym kontekście akceleratora (47% obliczeń, 28% pamięci).
-Bez karty graficznej i przy mniej niż 1024 zdjęciach kalibracyjnych kompilator schodzi
-do poziomu optymalizacji 0 (64 zdjęcia, podstawowa kwantyzacja) — działa, ale może tracić
-więcej dokładności niż przy pełnej optymalizacji (karta graficzna w WSL i ok. 1024 zdjęcia).
+The final model fits in one accelerator context (47% compute, 28% memory). Without a GPU and
+with fewer than 1024 calibration images the compiler falls back to optimization level 0
+(64 images, basic quantization) — it works, but may lose more accuracy than full optimization
+(GPU in WSL and about 1024 images).
 
-| Objaw | Rozwiązanie |
+| Symptom | Fix |
 |---|---|
-| `Temporary failure resolving` | ręczny DNS w `/etc/resolv.conf` (`nameserver 8.8.8.8`) |
-| `No such file ... yolov8n_nms_config.json` | dograć `postprocess_config` z gałęzi v2.17 |
-| `The layer named yolov8n/conv41 doesn't exist` | nazwa sieci `yolov8n` (jest w `compile_hef.py`) |
-| `invalid choice: 'hailo8'` | Model Zoo 2.17 zamiast 5.x |
-| `Unsupported hef version` (na Pi) | kompilator z wydania HailoRT na Pi |
+| `Temporary failure resolving` | manual DNS in `/etc/resolv.conf` (`nameserver 8.8.8.8`) |
+| `No such file ... yolov8n_nms_config.json` | copy `postprocess_config` from the v2.17 branch |
+| `The layer named yolov8n/conv41 doesn't exist` | network name `yolov8n` (set in `compile_hef.py`) |
+| `invalid choice: 'hailo8'` | Model Zoo 2.17 instead of 5.x |
+| `Unsupported hef version` (on the Pi) | use the compiler from the HailoRT release installed on the Pi |
 
-## 3. Raspberry Pi 5 z AI HAT+: sprawdzenie
+## 3. Raspberry Pi 5 with AI HAT+: check
 
-`fieldeye_final_1280_h8.hef` w katalogu repozytorium, opcjonalnie zbiór `zbior_ewis1_podzial`
-(z paczki danych) albo paczka testowa `test_ewis1/`:
+`fieldeye_final_1280_h8.hef` in the repository folder and the EWIS1 test set with a `data.yaml`
+(`zbior_ewis1_podzial/dataset/data.yaml` from `final_model.sh`, or a test package `test_ewis1/`):
 
 ```bash
-bash scripts/check_hef.sh                                                     # domyślnie test_ewis1/data.yaml
+bash scripts/check_hef.sh                                                     # default: test_ewis1/data.yaml
 bash scripts/check_hef.sh fieldeye_final_1280_h8.hef zbior_ewis1_podzial/dataset/data.yaml
 ```
 
-Skrypt sprawdza akcelerator (`hailortcli fw-control identify`), plik (`parse-hef`: wejście
-1280×1280×3, wyjście z NMS), szybkość (`hailortcli run`) i dokładność na teście EWIS1 bez TTA
-i z TTA, z porównaniem z `.pt`:
-
-| | AP50 `.pt` | czułość | precyzja |
-|---|---|---|---|
-| bez TTA | 0,812 | 79,1% | 81,1% |
-| z TTA | 0,817 | 78,4% | 84,3% |
-
-Różnica to strata z kwantyzacji i kompilacji: do ok. 2 pp „dobrze”, do 5 pp „akceptowalnie”,
-więcej — sprawdzić kompilację i zdjęcia kalibracyjne. NMS na układzie odrzuca wykrycia poniżej
-0,05, więc AP50 HEF-a może wyjść ok. 0,01 niżej tylko z tego powodu.
-
-## 4. Użycie w locie
+The package made by `scripts/spakuj_na_pi.sh` contains the test tiles but no `data.yaml`;
+inside it, create one first:
 
 ```bash
-./fieldeye-detect ZDJECIA WYNIKI fieldeye_final_1280_h8.hef                    # binarka
-python3 -m mission.detect_cli ZDJECIA WYNIKI fieldeye_final_1280_h8.hef        # ze źródeł
+printf 'path: .\ntrain: images/test\nval: images/test\ntest: images/test\nnames: {0: chwast}\n' \
+    > zbior_ewis1_podzial/dataset/data.yaml
 ```
 
-Domyślnie próg 0,15 i kafelek 950 px (1,5 m pola z 5 m). Przy `.hef` wejście sieci jest
-wbudowane w plik. Pełny opis (telemetria, mapa oprysku, paczka na Pi): `docs/fieldeye-detect.md`.
+The script checks the accelerator (`hailortcli fw-control identify`), the file (`parse-hef`:
+input 1280×1280×3, output with NMS), speed (`hailortcli run`) and accuracy on the EWIS1 test
+without and with TTA, compared with the `.pt`:
+
+| | AP50 `.pt` | recall | precision |
+|---|---|---|---|
+| without TTA | 0.812 | 79.1% | 81.1% |
+| with TTA | 0.817 | 78.4% | 84.3% |
+
+The difference is the cost of quantization and compilation: up to about 2 pp is good, up to
+5 pp acceptable; more means the compilation or the calibration images need a look. The NMS on
+the chip drops detections below 0.05, so the HEF's AP50 may come out about 0.01 lower for that
+reason alone. Not measured yet; the first run on the Pi gave 4090 detections on the 132 test
+tiles (4313 with the `.pt` on a Mac), about 0.03 s per tile.
+
+## 4. Use in flight
+
+```bash
+./fieldeye-detect PHOTOS RESULTS fieldeye_final_1280_h8.hef                 # binary
+python3 -m mission.detect_cli PHOTOS RESULTS fieldeye_final_1280_h8.hef     # from source
+```
+
+Defaults: threshold 0.15, tile 950 px (1.5 m of field from 5 m). With a `.hef` the network
+input size is built into the file. Full description (telemetry, spray map, Pi package):
+[`docs/fieldeye-detect.md`](../docs/fieldeye-detect.md).
