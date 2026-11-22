@@ -54,6 +54,41 @@ The team works in three subgroups:
 
 ---
 
+## What it looks like
+
+**Detection.** The final model on a test tile it never saw in training (EWIS1, flight day
+16 May 2022). Left: weeds marked by the dataset authors; right: the model's boxes
+(confidence threshold 0.15). The tile was not hand-picked: it is the one whose F1 score is
+closest to the median over all test tiles with at least 20 weeds, so it shows a typical result.
+
+![EWIS1 test tile: true weeds on the left, model detections on the right](docs/img/detection_ewis1.jpg)
+
+The same for WeedsGalore, the hardest test set (very young seedlings, only a few pixels wide):
+
+![WeedsGalore test tile: true weeds on the left, model detections on the right](docs/img/detection_weedsgalore.jpg)
+
+**Spray map.** A simulated flight: `mission.drone_sim` flies a lawnmower route over one EWIS1
+test photo (about 6.4 × 4.3 m of field, 1.5 × 1.5 m per drone photo) and writes photos +
+telemetry; `fieldeye-detect` turns them into spray points. Blue line: drone route (where the
+photos were taken); green squares: true weeds visible on the photos; pink circles: spray points
+(circle = spray radius). A weed counts as hit when a spray point is closer than 10 cm:
+69 of 83 weeds hit, 20 extra spray points (perfect telemetry, no GPS error).
+
+![Simulated flight over an EWIS1 photo: route, true weeds and spray points](docs/img/spray_map.jpg)
+
+The same result as GeoJSON, which GitHub shows on a map (click a point to see its properties):
+[`docs/example/spray_map_simulated.geojson`](docs/example/spray_map_simulated.geojson).
+**Its coordinates are made up:** the photo was placed at an arbitrary point (top-left corner
+50.255150, 19.033382) only so that it can be drawn on a map. They are not where the photo was
+taken; only the distances between points are real.
+
+Images: [EWIS1](https://doi.org/10.17632/6j5pxgf437.1) (N. Genze, M. Grieb, D. Grimm, CC BY 4.0)
+and [WeedsGalore](https://doidata.gfz.de/weedsgalore_e_celikkan_2024/) (E. Celikkan et al., CC BY),
+cropped, resized and annotated with our model's detections. Full citations:
+[Datasets and licences](#datasets-and-licences).
+
+---
+
 ## What the software consists of
 
 | # | Component | Folder | Input → output |
@@ -158,8 +193,9 @@ Then `bash scripts/final_model.sh` builds the YOLO datasets (`zbior_lotnicze/`, 
 
 ### Datasets and licences
 
-The repository does not contain any images or labels from these datasets, only code that reads
-them. The final model `models/weights/fieldeye_final.pt` was trained on them. All three are
+The repository does not contain the datasets or their labels, only code that reads them. The
+only images from them are the three example pictures in `docs/img/` (test images with boxes
+drawn on them, see [What it looks like](#what-it-looks-like)). The final model `models/weights/fieldeye_final.pt` was trained on them. All three are
 published under Creative Commons Attribution licences — they can be used freely, provided the
 authors are credited:
 
@@ -211,6 +247,7 @@ On Windows use `py -m ...` instead of `python -m ...`. `caffeinate -i` only keep
 | [`scripts/`](scripts/README.md) | tooling | `final_model.sh` (everything for the model), Hailo compilation and check, binary build, Pi package, test-data generators |
 | [`tests/`](tests/README.md) | tests | ~215 automatic tests for every part |
 | [`docs/fieldeye-detect.md`](docs/fieldeye-detect.md) | deployment | full manual of the `fieldeye-detect` program: telemetry format, outputs, coordinates, binary, Raspberry Pi |
+| `docs/img/`, [`docs/example/`](docs/example/spray_map_simulated.geojson) | docs | pictures for this README and an example spray map (GeoJSON, made-up coordinates) |
 | [`docs/raspberry-pi.md`](docs/raspberry-pi.md) | deployment | step by step on the Raspberry Pi: install, build the binary, run it in flight, what it needs and what it gives back |
 | `app.py` | GUI | Streamlit interface with four tabs (see below; inside: [`docs/gui.md`](docs/gui.md)) |
 | `wyniki/model_koncowy/` | results | evaluation of the final model: `ewis1.json`, `ewis1_tta.json`, `wg.json`, `wg_tta.json` |
