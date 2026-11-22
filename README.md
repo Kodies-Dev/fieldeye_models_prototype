@@ -67,17 +67,23 @@ The same for WeedsGalore, the hardest test set (very young seedlings, only a few
 
 ![WeedsGalore test tile: true weeds on the left, model detections on the right](docs/img/detection_weedsgalore.jpg)
 
-**Spray map.** A simulated flight: `mission.drone_sim` flies a lawnmower route over one EWIS1
-test photo (about 6.4 × 4.3 m of field, 1.5 × 1.5 m per drone photo) and writes photos +
-telemetry; `fieldeye-detect` turns them into spray points. Blue line: drone route (where the
-photos were taken); green squares: true weeds visible on the photos; pink circles: spray points
-(circle = spray radius). A weed counts as hit when a spray point is closer than 10 cm:
-69 of 83 weeds hit, 20 extra spray points (perfect telemetry, no GPS error).
+**Spray map.** A simulated flight: `mission.drone_sim` flies over one EWIS1 test photo (about
+6.4 × 4.3 m of field, 1.5 × 1.5 m per drone photo) and writes photos + telemetry;
+`fieldeye-detect` turns them into spray points. Compared with the true weed positions (a hit is
+a spray point closer than 10 cm): 69 of 83 weeds hit, 20 extra spray points (perfect telemetry,
+no GPS error).
 
-![Simulated flight over an EWIS1 photo: route, true weeds and spray points](docs/img/spray_map.jpg)
+![Simulated flight: true weeds and spray points on the photographed part of an EWIS1 photo](docs/img/spray_points.jpg)
 
-The same result as GeoJSON, which GitHub shows on a map (click a point to see its properties):
-[`docs/example/spray_map_simulated.geojson`](docs/example/spray_map_simulated.geojson).
+Green: true weeds seen on the flight photos (EWIS1 labels). Pink: spray points from
+`oprysk.geojson`, each drawn as a square the size of the detected weed (spray radius minus the
+5 cm margin). Pink inside green = weed hit; green alone = weed missed; pink alone = extra spray
+point. The picture was made for this README from the EWIS1 labels and `oprysk.geojson`;
+`fieldeye-detect` itself only writes the GeoJSON.
+
+The spray map from this flight, exactly as `fieldeye-detect` writes it (`oprysk.geojson`;
+GitHub shows it on a map, click a point to see its radius and confidence):
+[`docs/example/oprysk_simulated.geojson`](docs/example/oprysk_simulated.geojson).
 **Its coordinates are made up:** the photo was placed at an arbitrary point (top-left corner
 50.255150, 19.033382) only so that it can be drawn on a map. They are not where the photo was
 taken; only the distances between points are real.
@@ -247,7 +253,7 @@ On Windows use `py -m ...` instead of `python -m ...`. `caffeinate -i` only keep
 | [`scripts/`](scripts/README.md) | tooling | `final_model.sh` (everything for the model), Hailo compilation and check, binary build, Pi package, test-data generators |
 | [`tests/`](tests/README.md) | tests | ~215 automatic tests for every part |
 | [`docs/fieldeye-detect.md`](docs/fieldeye-detect.md) | deployment | full manual of the `fieldeye-detect` program: telemetry format, outputs, coordinates, binary, Raspberry Pi |
-| `docs/img/`, [`docs/example/`](docs/example/spray_map_simulated.geojson) | docs | pictures for this README and an example spray map (GeoJSON, made-up coordinates) |
+| `docs/img/`, [`docs/example/`](docs/example/oprysk_simulated.geojson) | docs | pictures for this README and an example spray map (`oprysk.geojson`, made-up coordinates) |
 | [`docs/raspberry-pi.md`](docs/raspberry-pi.md) | deployment | step by step on the Raspberry Pi: install, build the binary, run it in flight, what it needs and what it gives back |
 | `app.py` | GUI | Streamlit interface with four tabs (see below; inside: [`docs/gui.md`](docs/gui.md)) |
 | `wyniki/model_koncowy/` | results | evaluation of the final model: `ewis1.json`, `ewis1_tta.json`, `wg.json`, `wg_tta.json` |

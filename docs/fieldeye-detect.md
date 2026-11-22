@@ -272,8 +272,8 @@ Options: `--zaklocenia` (rotation, jitter, brightness), `--szum-gps-m 1.5` (GPS 
 | GPS without RTK (±1.5 m) | 29% | the same weed appears many times on the map |
 
 With the real model (`fieldeye_final.pt`, threshold 0.15) on an EWIS1 test photo and perfect
-telemetry: 69 of 83 weeds hit, 20 extra spray points. Picture: [README](../README.md#what-it-looks-like);
-map: [`docs/example/spray_map_simulated.geojson`](example/spray_map_simulated.geojson)
+telemetry: 69 of 83 weeds hit, 20 extra spray points ([README](../README.md#what-it-looks-like)).
+The resulting `oprysk.geojson`: [`docs/example/oprysk_simulated.geojson`](example/oprysk_simulated.geojson)
 (made-up coordinates, only distances are real).
 
 ## 9. Code map
