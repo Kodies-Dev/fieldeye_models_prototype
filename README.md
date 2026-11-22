@@ -214,8 +214,11 @@ authors are credited:
 
 **Ultralytics.** Training and the `.pt` detector use [Ultralytics YOLOv8](https://github.com/ultralytics/ultralytics),
 licensed under **AGPL-3.0**. Ultralytics' position is that models trained with it are covered by
-the same licence unless an Ultralytics enterprise licence is obtained. The licence of this
-repository has not been chosen yet; AGPL-3.0 would be the consistent choice.
+the same licence unless an Ultralytics enterprise licence is obtained.
+
+**This repository** (code, documentation and the trained model) is therefore licensed under
+**AGPL-3.0** as well: see [`LICENSE`](LICENSE). The example pictures in `docs/img/` are made from
+dataset images and keep the CC BY licences of their datasets (authors in the table above).
 
 ---
 
@@ -262,6 +265,7 @@ On Windows use `py -m ...` instead of `python -m ...`. `caffeinate -i` only keep
 | `requirements.txt` | setup | all Python dependencies (OpenCV contrib, Streamlit, PyYAML, Ultralytics, ONNX) |
 | `pyproject.toml` | setup | package metadata; console scripts `stitchlive`, `fieldeye-models`, `fieldeye-detect` after `pip install -e .` |
 | `Makefile` | setup | shortcuts: `make test`, `make model`, `make gui`, `make demo`, `make clean` |
+| [`LICENSE`](LICENSE) | setup | AGPL-3.0 licence of this repository |
 | `claudowy_opis_projektu.docx`, `poradnik_jak_rozpakowac_zipa_extreme.txt` | team notes | project description and a guide for unpacking the packages |
 
 Folders created by the scripts and ignored by git: `dane/` (raw datasets), `zbior_lotnicze/`,
