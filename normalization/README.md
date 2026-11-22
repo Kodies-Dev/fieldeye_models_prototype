@@ -8,6 +8,7 @@ each of them, converts everything into one intermediate format (the *manifest*),
 clean YOLO dataset: deduplicated, split without leaks, tiled to the scale of our drone.
 
 It is run as step 1 of `scripts/final_model.sh`, once per dataset.
+How it works inside — flow, technologies, key functions explained: [`PIPELINE.md`](PIPELINE.md).
 
 ---
 

@@ -94,6 +94,17 @@ The team works in three subgroups:
 `scripts/final_model.sh` runs the whole training side in one go: normalization of the three
 datasets → training → evaluation on two test sets → ONNX package for the Hailo compiler.
 
+### How each part works inside
+
+| Part | Flow, technologies and key functions explained |
+|---|---|
+| data normalization | [`normalization/PIPELINE.md`](normalization/PIPELINE.md) |
+| AI model | [`models/PIPELINE.md`](models/PIPELINE.md) |
+| Hailo-8 deployment | [`scripts/HAILO_PIPELINE.md`](scripts/HAILO_PIPELINE.md) |
+| in-flight detection and spray map | [`mission/PIPELINE.md`](mission/PIPELINE.md) |
+| flight simulator and mosaic | [`stitchlive/PIPELINE.md`](stitchlive/PIPELINE.md) |
+| GUI | [`docs/gui.md`](docs/gui.md) |
+
 ---
 
 ## Final model
@@ -198,7 +209,7 @@ On Windows use `py -m ...` instead of `python -m ...`. `caffeinate -i` only keep
 | [`scripts/`](scripts/README.md) | tooling | `final_model.sh` (everything for the model), Hailo compilation and check, binary build, Pi package, test-data generators |
 | [`tests/`](tests/README.md) | tests | ~215 automatic tests for every part |
 | [`docs/fieldeye-detect.md`](docs/fieldeye-detect.md) | deployment | full manual of the `fieldeye-detect` program: telemetry format, outputs, coordinates, binary, Raspberry Pi |
-| `app.py` | GUI | Streamlit interface with four tabs (see below) |
+| `app.py` | GUI | Streamlit interface with four tabs (see below; inside: [`docs/gui.md`](docs/gui.md)) |
 | `wyniki/model_koncowy/` | results | evaluation of the final model: `ewis1.json`, `ewis1_tta.json`, `wg.json`, `wg_tta.json` |
 | `model_fin.zip` | deployment | compiled `fieldeye_final_1280_h8.hef` + a Word note on running it on the Pi |
 | `requirements.txt` | setup | all Python dependencies (OpenCV contrib, Streamlit, PyYAML, Ultralytics, ONNX) |
@@ -220,10 +231,12 @@ streamlit run app.py
 
 | Tab | What it does |
 |---|---|
-| **1. Rozkład zdjęcia** (split image) | upload an image or generate a synthetic field, choose the flight pattern and disturbances, cut it into drone frames; shows the route on the original |
+| **1. Rozkład zdjęcia** (split image) | upload a large image of a field, choose the flight pattern and disturbances, cut it into drone frames; shows the route on the original |
 | **2. Kadry do pobrania** (frames) | gallery of the frames with their true position; download frames (ZIP), frames + `prawda.json` + route preview, single frames |
 | **3. Składanie** (stitching) | frames from tab 1 or your own photos; the mosaic grows frame by frame; comparison with the original; download mosaic (JPG), animation (GIF), full report (ZIP) |
-| **4. Lot z detekcją** (flight with detection) | simulated flight over test tiles of one day with the weed model (default `models/weights/fieldeye_final.pt`, input 1280): detections on every frame, ground truth boxes, weeds on the mosaic, optional real drone camera geometry, GIF of the flight |
+| **4. Lot z detekcją** (flight with detection) | simulated flight over test tiles of one day (or an uploaded image, or a synthetic field) with the weed model (default `models/weights/fieldeye_final.pt`, input 1280): detections on every frame, ground truth boxes, weeds on the mosaic, optional real drone camera geometry, GIF of the flight |
+
+How every tab works inside (state between reruns, caching the model, the flight loop): [`docs/gui.md`](docs/gui.md).
 
 ---
 

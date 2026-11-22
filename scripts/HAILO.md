@@ -7,7 +7,7 @@
 | path | `.pt` → ONNX + calibration images (Mac) → HEF (WSL, Ubuntu 22.04) → run (Raspberry Pi) |
 
 The HEF does not replace the `.pt`: training, evaluation and the simulator on a computer keep
-using the `.pt`.
+using the `.pt`. What happens inside each step: [`HAILO_PIPELINE.md`](HAILO_PIPELINE.md).
 
 ---
 

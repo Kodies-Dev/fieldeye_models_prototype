@@ -7,6 +7,7 @@ Hailo-8). It watches the folder where the drone saves photos, detects weeds on e
 photo and — using the GeoJSON telemetry saved next to the photo — turns the detections into
 coordinates and spray points. Full manual (options, telemetry format, outputs, binary,
 Raspberry Pi): [`docs/fieldeye-detect.md`](../docs/fieldeye-detect.md).
+How it works inside — flow, technologies, key functions explained: [`PIPELINE.md`](PIPELINE.md).
 
 ```bash
 python -m mission.detect_cli PHOTOS RESULTS models/weights/fieldeye_final.pt      # from source

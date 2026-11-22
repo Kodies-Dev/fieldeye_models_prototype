@@ -33,6 +33,7 @@ can be stopped and started again.
 | File | Where | What it does |
 |---|---|---|
 | [`HAILO.md`](HAILO.md) | — | step-by-step compilation to `.hef`: Mac → WSL → Raspberry Pi |
+| [`HAILO_PIPELINE.md`](HAILO_PIPELINE.md) | — | how it works inside: NMS configuration, the cut at the head, INT8 quantization, `HailoDetector`, the check |
 | `compile_hef.py` | WSL (Ubuntu 22.04, Hailo DFC 3.33, Model Zoo 2.17) | ONNX → HEF directly through the Dataflow Compiler (parse → optimize INT8 → compile), with its own NMS configuration: image 1280, 1 class, threshold 0.05, up to 300 boxes |
 | `check_hef.sh` | Raspberry Pi | accelerator, `parse-hef`, speed, accuracy on the EWIS1 test and comparison with the `.pt` (AP50 0.812 / 0.817) |
 

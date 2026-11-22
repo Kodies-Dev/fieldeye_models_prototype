@@ -7,6 +7,7 @@ Takes the YOLO datasets from `normalization/`, trains YOLOv8n with one class "we
 from which the Hailo-8 `.hef` file is compiled (`scripts/HAILO.md`).
 
 Steps 2–4 of `scripts/final_model.sh` use this package.
+How it works inside — flow, technologies, key functions explained: [`PIPELINE.md`](PIPELINE.md).
 
 ---
 

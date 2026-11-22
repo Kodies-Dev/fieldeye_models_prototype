@@ -11,6 +11,8 @@ The package does three things:
 2. **Mosaic stitching** — joins drone frames into one mosaic, also live while new frames arrive.
 3. **Evaluation** — aligns the mosaic with the original and measures how good it is (PSNR, coverage, scale).
 
+How it works inside — flow, technologies, key functions explained: [`PIPELINE.md`](PIPELINE.md).
+
 This is "Program 1" of the project plan: checking whether the material can be stitched at all.
 Geo-referencing the mosaic is out of scope (spraying uses per-photo coordinates, see `mission/`).
 
