@@ -1,13 +1,70 @@
-# FIELDEYE — weed detection from drone images
+# FIELDEYE — AI software for weed detection from drone images
 
-Software for the vision layer of the **FIELDEYE** project: a drone (Raspberry Pi 5 with a
-Hailo-8 accelerator, Arducam 64MP camera, flight altitude 5 m) photographs a field, a YOLO
-model finds weeds on every photo, and the detections are turned into GPS coordinates of
-spray points for the farmer.
+This repository is **only the AI-related software part** of the FIELDEYE project: the data,
+the weed detection model, its deployment on the drone's AI accelerator and the program that
+turns detections into spray coordinates, plus the simulator used to test all of it without a
+drone. The drone itself, its electronics and the integration on board are not part of this
+repository.
 
-The repository covers the whole path: public datasets → one training dataset → trained
-detector → model compiled for Hailo-8 → program that runs on the drone, plus a flight
-simulator, a mosaic stitcher and a graphical interface for testing all of it on a laptop.
+In the drone system this software is an **external module that runs on the Raspberry Pi**
+(with the Hailo-8 accelerator) that will be mounted on the drone, next to the drone's own
+systems and not inside the flight controller. The drone's side gives it photos and telemetry through a folder;
+it gives back the spray map.
+
+---
+
+## About the FIELDEYE project
+
+FIELDEYE is a student PBL (project-based learning) project at the Silesian University of
+Technology (Politechnika Śląska). The idea: a drone flies over a crop field at about 5 m, a
+camera photographs the field, and every photo is checked for weeds **during the flight**.
+Each detected weed gets GPS coordinates, so the farmer receives a map of the places that need
+spraying instead of spraying the whole field.
+
+| | |
+|---|---|
+| drone computer | Raspberry Pi 5 with the AI HAT+ (Hailo-8 accelerator, 26 TOPS) |
+| camera | Arducam 64MP Hawkeye, pointing straight down, flight altitude about 5 m |
+| telemetry | autopilot writes a GeoJSON file (position, heading, altitude, tilt) next to every photo |
+| result for the farmer | spray points as GeoJSON / CSV (coordinates, radius, confidence) |
+
+Where this software sits in the drone system:
+
+```
+ DRONE                                  RASPBERRY PI 5 TO BE MOUNTED ON THE DRONE (+ AI HAT+, Hailo-8)
+ ─────                                  ─────────────────────────────────────────────────────────────
+ autopilot, GPS / IMU  ──┐              drone-side software (embedded subgroup):
+ camera                ──┴────────────► camera capture + telemetry writer
+                                                    │
+                                                    ▼  photo folder: IMG.jpg + IMG.geojson
+                                        THIS REPOSITORY — external module: fieldeye-detect
+                                        weeds on every photo → coordinates → spray points
+                                                    │
+                                                    ▼
+                                        spray map (GeoJSON / CSV) → farmer / sprayer
+```
+
+The team works in three subgroups:
+
+| Subgroup | Responsibility | In this repository |
+|---|---|---|
+| **AI / ML** | datasets, weed detector, model compilation for Hailo-8, detection program, simulator | **yes — everything here** |
+| embedded | drone hardware, Raspberry Pi and camera, telemetry, running the program on board | no — the shared interface is a photo folder + GeoJSON telemetry |
+| organisational | organisation of the project | no |
+
+---
+
+## What the software consists of
+
+| # | Component | Folder | Input → output |
+|---|---|---|---|
+| 1 | **Data normalization** — reads public weed datasets (each in its own format), unifies class names, removes duplicates, splits without leaks, cuts tiles at the drone's scale | [`normalization/`](normalization/README.md) | raw datasets in `dane/` → YOLO datasets `zbior_*/` |
+| 2 | **AI model** — YOLOv8n weed detector: training plan, training, evaluation per flight day, test-time augmentation | [`models/`](models/README.md) | YOLO datasets → `models/weights/fieldeye_final.pt` + results |
+| 3 | **Edge deployment (Hailo-8)** — export to ONNX, calibration images, INT8 compilation to `.hef`, accuracy check on the Pi | `models/export.py`, [`scripts/HAILO.md`](scripts/HAILO.md) | `.pt` → `.onnx` → `fieldeye_final_1280_h8.hef` |
+| 4 | **In-flight detection and spray map** — `fieldeye-detect`: watches the photo folder, detects weeds tile by tile, converts them to coordinates using the telemetry, merges them into spray points; also as a single-file binary | [`mission/`](mission/README.md), [`docs/fieldeye-detect.md`](docs/fieldeye-detect.md) | photos + GeoJSON telemetry → spray map (GeoJSON / CSV) |
+| 5 | **Flight simulator and mosaic** — cuts one large image into drone frames with realistic disturbances, stitches frames into a mosaic, drone camera model; simulated drone that writes photos + telemetry | [`stitchlive/`](stitchlive/README.md), `mission/drone_sim.py` | field image → frames + ground truth → mosaic |
+| 6 | **GUI** — Streamlit app for trying the simulator, the stitching and the detector | `app.py` | browser interface |
+| 7 | **Automation and tests** — one script for the whole model, binary build, Pi package; ~215 tests | [`scripts/`](scripts/README.md), [`tests/`](tests/README.md) | — |
 
 ---
 
@@ -27,7 +84,7 @@ simulator, a mosaic stitcher and a graphical interface for testing all of it on 
  DRONE                                                                 ▼        ▼
  photo + telemetry (.geojson) ─────────────────────────────► mission/ fieldeye-detect (binary on the Pi)
                                                                tiles → model → GPS coordinates
-                                                               → spray map (oprysk.geojson / .csv)
+                                                               → spray map (GeoJSON)
 
  LAPTOP TOOLS
  stitchlive/  flight simulator (cuts one big image into drone frames), mosaic stitching, camera model
@@ -59,6 +116,52 @@ Results are stored in `wyniki/model_koncowy/*.json`; the full story is in
 The same model compiled for Hailo-8 (`fieldeye_final_1280_h8.hef`, 5.4 MB, HailoRT 4.23) is
 in `model_fin.zip`. Measuring its accuracy on the Pi against the `.pt` (`scripts/check_hef.sh`)
 is still to be done.
+
+---
+
+## Getting the data
+
+The datasets are not in the repository (they are large and have their own licences). Download
+them from the authors and unpack them into a `dane/` folder in the project root (`dane/` is
+ignored by git):
+
+| Dataset | Where | What to download |
+|---|---|---|
+| WeedsGalore | https://doidata.gfz.de/weedsgalore_e_celikkan_2024/ | the `weedsgalore-dataset` archive (≈0.4 GB; contains the authors' split) |
+| Sudars | https://data.mendeley.com/datasets/nj4vtk4tt6/1 | the whole dataset ("Download All") |
+| EWIS1: Maize, Sorghum & Weed Dataset | https://data.mendeley.com/datasets/6j5pxgf437 | the whole dataset ("Download All") |
+
+After unpacking the folder should look like this (these are the paths `scripts/final_model.sh` uses):
+
+```
+dane/
+├── weedsgalore-dataset/                      2023-05-25/, 2023-05-30/, 2023-06-06/, 2023-06-15/, splits/
+├── sudars/dataset/                           raw images/*.jpg + annotations/*.xml
+└── EWIS1 Maize, Sorghum & Weed Dataset/      (or dane/ewis1/)  images/, bounding_boxes/, masks/
+```
+
+Then `bash scripts/final_model.sh` builds the YOLO datasets (`zbior_lotnicze/`, `zbior_naziemne/`,
+`zbior_ewis1_podzial/`) and the model. Details of every dataset and of the expected layout:
+[`normalization/README.md`](normalization/README.md). The tests and the GUI do not need the data
+(the GUI can generate a synthetic field; tab 4 uses the test tiles once the datasets are built).
+
+### Datasets and licences
+
+The repository does not contain any images or labels from these datasets, only code that reads
+them. The final model `models/weights/fieldeye_final.pt` was trained on them. All three are
+published under Creative Commons Attribution licences — they can be used freely, provided the
+authors are credited:
+
+| Dataset | Licence | Citation |
+|---|---|---|
+| WeedsGalore | CC BY (as stated in the authors' repository) | E. Celikkan, T. Kunzmann, Y. Yeskaliyev, S. Itzerott, N. Klein, M. Herold. *WeedsGalore: A Multispectral and Multitemporal UAV-Based Dataset for Crop and Weed Segmentation in Agricultural Maize Fields.* WACV 2025, pp. 4767–4777. [arXiv:2502.13103](https://arxiv.org/abs/2502.13103); data: [GFZ Data Services](https://doidata.gfz.de/weedsgalore_e_celikkan_2024/) |
+| Sudars | CC BY 4.0 | K. Sudars (2021). *Data for: Dataset of annotated food crops and weed images for robotic computer vision control*, Version 1. Mendeley Data. [doi:10.17632/nj4vtk4tt6.1](https://doi.org/10.17632/nj4vtk4tt6.1) |
+| EWIS1 | CC BY 4.0 | N. Genze, M. Grieb, D. Grimm. *EWIS1: Maize, Sorghum & Weed Dataset*, Version 1. Mendeley Data. [doi:10.17632/6j5pxgf437.1](https://doi.org/10.17632/6j5pxgf437.1) |
+
+**Ultralytics.** Training and the `.pt` detector use [Ultralytics YOLOv8](https://github.com/ultralytics/ultralytics),
+licensed under **AGPL-3.0**. Ultralytics' position is that models trained with it are covered by
+the same licence unless an Ultralytics enterprise licence is obtained. The licence of this
+repository has not been chosen yet; AGPL-3.0 would be the consistent choice.
 
 ---
 
@@ -124,37 +227,9 @@ streamlit run app.py
 
 ---
 
-## Status
-
-| Part | State |
-|---|---|
-| normalization of WeedsGalore, Sudars, EWIS1 | done |
-| training and evaluation | done — Windows (CUDA) and Mac (MPS) |
-| weed detector | final model: AP50 0.817 on an RGB camera, 0.714 on WeedsGalore |
-| ONNX export, Hailo-8 `.hef` | compiled; accuracy check on the Pi pending |
-| `fieldeye-detect` (detection + spray map) | done, as Python program and single-file binary |
-| detection → coordinates | done; error dominated by GPS (≈1 m without RTK, a few cm with RTK) |
-| flight simulator, mosaic stitching (`global`) | done; PSNR 22–25 dB on simulated flights |
-| geo-referenced mosaic, IMU tilt correction | not done (tilt is only used to reject photos) |
-| fine-tuning on photos from our own drone | waiting for data |
-
----
-
-## Conventions
-
-- Package, file and class names are English; comments, docstrings, many function names
-  and command-line options are Polish (e.g. `--prog` = threshold, `-o` = output folder).
-- Every function has a docstring in a fixed template: what it does, why, arguments,
-  return value, where it is used.
-- Frequent Polish words: `chwast` weed, `uprawa` crop, `zbior` dataset, `kafelek` tile,
-  `kadr` frame, `mozaika` mosaic, `prog` threshold, `wyniki` results, `dane` data,
-  `ocen` evaluate, `trenuj` train, `rozloz` split into frames, `oprysk` spraying, `lot` flight.
-
----
-
 ## Limitations
 
-- Nadir camera and flat field are assumed both in coordinates and in stitching.
+- The camera is assumed to point straight down and the field to be flat: drone tilt and terrain
+  slopes are not corrected (photos tilted more than 5° are left off the map).
 - The model has never seen photos from our own drone and field; public datasets only.
 - Map accuracy is limited by GPS, not by the computation.
-- The mosaic is not geo-referenced (it is for people to look at; spraying uses per-photo coordinates).
