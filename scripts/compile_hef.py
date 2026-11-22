@@ -164,7 +164,7 @@ def main(argv=None):
     alls_wzor = cfg / "alls" / "generic" / "yolov8n.alls"
     for p in (nms_wzor, alls_wzor):
         if not p.exists():
-            raise FileNotFoundError(f"brak {p} - dograj cfg z gałęzi v2.17 hailo_model_zoo (patrz dokument, 4.5)")
+            raise FileNotFoundError(f"brak {p} - dograj cfg z gałęzi v2.17 hailo_model_zoo (scripts/HAILO.md, krok 2)")
 
     # nasza konfiguracja NMS obok wyniku + skrypt modelu z podmieniona sciezka do niej
     wyj = Path(a.output)

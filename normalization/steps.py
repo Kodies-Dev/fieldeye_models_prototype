@@ -120,9 +120,11 @@ def deduplikuj(rekordy, prog=5):
     prog = ile bitow z 64 moze sie roznic. 0 to identyczny obraz,
     5 to ten sam obraz po rekompresji albo lekkim przeskalowaniu.
 
-    Grupujemy po prefiksie skrotu, zeby nie porownywac kazdy z kazdym -
-    przy kilkudziesieciu tysiacach zdjec roznica jest miedzy sekundami
-    a godzinami.
+    Zeby nie porownywac kazdy z kazdym (przy kilkudziesieciu tysiacach zdjec
+    to roznica miedzy sekundami a godzinami), skrot dzielimy na prog + 1 kawalkow.
+    Dwa skroty rozne na najwyzej `prog` bitach maja co najmniej jeden kawalek
+    identyczny (zasada szufladkowa), wiec wystarczy porownac zdjecie z tymi,
+    ktore maja taki sam ktorys kawalek - zaden duplikat nie umknie.
 
     Po co: duplikat w treningu i w tescie zawyza wynik - dlatego krok jest PRZED podzialem.
 
@@ -141,21 +143,24 @@ def deduplikuj(rekordy, prog=5):
     kolejnosc = {z: i for i, z in enumerate(PRIORYTET)}
     posort = sorted(rekordy, key=lambda r: kolejnosc.get(r.zrodlo, 99))   # wazniejsze zbiory najpierw
 
-    kubelki = defaultdict(list)            # poczatek skrotu -> przyjete rekordy
+    n = prog + 1                           # ile kawalkow skrotu; prog 5 -> 6 kawalkow po 10-11 bitow
+    granice = [64 * i // n for i in range(n + 1)]
+    kubelki = defaultdict(list)            # (numer kawalka, kawalek) -> przyjete rekordy
     zostaje, odrzucone = [], []
     for r in posort:
         if r.phash is None:
             zostaje.append(r)
             continue
-        klucz = r.phash[:12]
-        # porownujemy tylko z rekordami o podobnym poczatku skrotu (12 albo 8 bitow)
-        kandydaci = [c for k in (klucz, klucz[:8]) for c in kubelki.get(k, [])]
+        klucze = [(i, r.phash[granice[i]:granice[i + 1]]) for i in range(n)]
+        # kandydaci: przyjete rekordy z tym samym ktoryms kawalkiem (kazdy raz, w kolejnosci przyjecia)
+        kandydaci = {id(c): c for k in klucze for c in kubelki.get(k, [])}.values()
         dubel = next((c for c in kandydaci if _odleglosc(r.phash, c.phash) <= prog), None)
         if dubel is not None:
             odrzucone.append({"id": r.id, "duplikat_z": dubel.id,
                               "roznych_bitow": _odleglosc(r.phash, dubel.phash)})
         else:
-            kubelki[klucz].append(r)
+            for k in klucze:
+                kubelki[k].append(r)
             zostaje.append(r)
 
     if odrzucone:

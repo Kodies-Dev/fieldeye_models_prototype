@@ -73,8 +73,8 @@ def test_plan_zapis_i_odczyt(tmp_path):
 def test_katalog_etykiet_windows():
     """Sciezka z backslashami - na Windowsie tekstowa zamiana nie dzialala."""
     from pathlib import PureWindowsPath
-    p = PureWindowsPath(r"C:\Users\kam05\pelny pbl\zbior\dataset\images\train")
-    assert katalog_etykiet(p) == PureWindowsPath(r"C:\Users\kam05\pelny pbl\zbior\dataset\labels\train")
+    p = PureWindowsPath(r"C:\Users\uzytkownik\projekt\zbior\dataset\images\train")
+    assert katalog_etykiet(p) == PureWindowsPath(r"C:\Users\uzytkownik\projekt\zbior\dataset\labels\train")
 
 
 def test_katalog_etykiet_posix():

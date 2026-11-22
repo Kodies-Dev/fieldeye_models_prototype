@@ -140,6 +140,29 @@ def test_deduplikacja_nie_usuwa_roznych_zdjec(tmp_path):
     assert odrzucone == []
 
 
+def test_deduplikacja_znajduje_roznice_w_kazdym_miejscu_skrotu():
+    """Duplikat jest wykrywany bez wzgledu na to, ktore bity skrotu sie roznia
+    (wczesniej umykaly roznice na poczatku skrotu), a roznica ponad prog nie."""
+    from normalization.manifest import Record
+    baza = "0" * 64
+
+    def zmien(bity):
+        s = list(baza)
+        for b in bity:
+            s[b] = "1"
+        return "".join(s)
+
+    for bity in ([0], [5, 11], [0, 1, 2, 3, 4], [10, 20, 30, 40, 63]):
+        rek = [Record(id="a", obraz="x", szer=1, wys=1, zrodlo="x", phash=baza),
+               Record(id="b", obraz="x", szer=1, wys=1, zrodlo="x", phash=zmien(bity))]
+        zostaly, odrzucone = K.deduplikuj(rek, prog=5)
+        assert [r.id for r in zostaly] == ["a"], bity
+        assert odrzucone == [{"id": "b", "duplikat_z": "a", "roznych_bitow": len(bity)}]
+    rek = [Record(id="a", obraz="x", szer=1, wys=1, zrodlo="x", phash=baza),
+           Record(id="b", obraz="x", szer=1, wys=1, zrodlo="x", phash=zmien(range(6)))]
+    assert K.deduplikuj(rek, prog=5)[1] == []                # 6 bitow > prog 5
+
+
 # ---------------------------------------------------------------- podzial
 
 def _rek(grupa, split=None, zrodlo="x"):

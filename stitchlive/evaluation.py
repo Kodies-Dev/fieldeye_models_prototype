@@ -173,8 +173,8 @@ def ocen(mozaika, oryginal, prawda=None, outdir=None, max_wymiar=1600):
             ocena.json          - slownik wyniku
 
         Uzywana w:
-            app.py, zakladka 3 (linia 424) - ocena po skladaniu; liczby i werdykt
-                                             pod mozaika, podglady w zakladce
+            app.py, zakladka 3 - ocena po skladaniu; liczby i werdykt
+                                pod mozaika, podglady w zakladce
             cli.py - polecenie ocen
         """
     ox, oy = 0, 0

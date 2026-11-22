@@ -242,7 +242,6 @@ def plan_trasa(W, H, zasieg, u, rng):
                          kurs, i))
     return plan
 
-#stare potem do wywalenia
 def plan_losowy(W, H, zasieg, u, rng):
     """Losowe miejsca ciecia z gwarancja pokrycia miedzy kolejnymi kadrami.
 
@@ -343,7 +342,7 @@ def _rozmyj_ruchem(img, dlugosc):
 
     Uzywana w:
         zaklocenia() (flight_sim.py) - gdy u.rozmycie_ruch_px >= 1 px;
-        wartosc liczy camera.opis_lotu() w zakladce 4 (app.py), app_matrix.py
+        wartosc liczy camera.opis_lotu() w zakladce 4 (app.py)
         i cli.py (rozloz --wysokosc). W zakladkach 1-3 jest 0 - nieuzywana.
     """
     n = int(math.ceil(dlugosc))
@@ -434,7 +433,7 @@ def wczytaj_zrodlo(sciezka, max_wymiar=0):
 
 
         Uzywana w:
-            cli.py (polecenie rozloz, linia 172) - zrodlo do rozloz() przy
+            cli.py (polecenie rozloz) - zrodlo do rozloz() przy
             python -m stitchlive.cli rozloz ZDJECIE ... --max-wymiar 2400.
             Aplikacja (app.py) jej nie uzywa.
         """
@@ -467,7 +466,7 @@ def rozloz(zrodlo, outdir, u=None, na_zywo=None, odstep=0.0):
              - kat = kurs + N(0, obrot); zasieg z = zasieg * (1 + N(0, skala)),
                przyciety do +-3 sigma (najwyzej +33%) - tak jak w marginesach
              - macierz_kadru() -> wytnij() -> zaklocenia() -> IMG_0001.jpg (jakosc 94)
-             - naroza_kadru() -> wpis do prawdy + czerwona ramka na podgladzie
+             - narozniki_kadru() -> wpis do prawdy + czerwona ramka na podgladzie
         6. zolta linia trasy na podgladzie, zapis plikow, log.info
         7. opcjonalnie: wypuszczanie kadrow co `odstep` s do folderu na_zywo
 
@@ -499,11 +498,10 @@ def rozloz(zrodlo, outdir, u=None, na_zywo=None, odstep=0.0):
         podglad_trasy.jpg        - czerwone ramki kadrow + zolta linia trasy
 
     Uzywana w:
-        app.py (zakladka 1, linia 250)    - "Rozloz zdjecie"
-        app.py (zakladka 4, linia 691)    - lot z detekcja
-        mission/sim_flight.py (217)       - lot z detekcja (app_matrix.py)
-        mission/drone_sim.py (157)        - symulowany dron z telemetria
-        stitchlive/cli.py (200, 244)      - polecenia rozloz i demo z terminala
+        app.py (zakladka 1)    - "Rozloz zdjecie"
+        app.py (zakladka 4)    - lot z detekcja
+        mission/drone_sim.py   - symulowany dron z telemetria
+        stitchlive/cli.py      - polecenia rozloz i demo z terminala
     """
     u = u or SimSettings()
     # jedno ziarno na cala symulacje = te same kadry przy kazdym uruchomieniu
@@ -521,7 +519,7 @@ def rozloz(zrodlo, outdir, u=None, na_zywo=None, odstep=0.0):
     plan = (plan_losowy if u.tryb == "losowy" else plan_trasa)(W, H, zasieg, u, rng)
     kw, kh = wymiary(u)
     if u.tryb == "losowy":
-        mx = my = margines(zasieg, u)  #mniej wazne potem wywalic
+        mx = my = margines(zasieg, u)  # tryb losowy: ten sam margines w obu kierunkach
     else:
         mx, my = marginesy(zasieg, u) #zwraca nam jak daleko musi byc srodek kadru aby nie wyleciec poza zdj
 

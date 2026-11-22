@@ -7,7 +7,7 @@ wzgledem siebie o kilka stopni daje wyraznie rozmyta mozaike, mimo ze
 pojedyncze pary kadrow dopasowuja sie z dokladnoscia subpikselowa.
 Bez obrotu problem nie wystepuje - same przesuniecia sumuja sie poprawnie.
 
-Tutaj pary liczy OpenCV (ORB + test proporcji + RANSAC), a polozenie
+Tutaj pary liczy OpenCV (ORB albo SIFT + test proporcji + RANSAC), a polozenie
 wszystkich kadrow wyznaczamy naraz, metoda najmniejszych kwadratow.
 
 Model: przeksztalcenie podobienstwa (obrot + skala + przesuniecie)
@@ -67,10 +67,10 @@ class GlobalStitcher:
 
 
                 Uzywana w:
-                    app.py, zakladka 3 (linia 384) - GlobalStitcher(work_megapix, zakres_par,
-                                                      szwy, renderuj_co) z suwakow
-                    app.py, zakladka 4 (linia 711) - renderuj_co=10**6 (rysuje tylko na koncu)
-                    cli.py (linia 29)              - polecenia batch / watch / demo
+                    app.py, zakladka 3 - GlobalStitcher(work_megapix, zakres_par,
+                                         szwy, renderuj_co) z suwakow
+                    app.py, zakladka 4 - renderuj_co=10**6 (rysuje tylko na koncu)
+                    cli.py             - polecenia batch / watch / demo
 
                     Stan skladacza (atrybuty) - rosnie z kazdym dodanym kadrem:
             sciezki       sciezki dodanych plikow, w kolejnosci dodania (indeks = numer kadru)
@@ -192,8 +192,8 @@ class GlobalStitcher:
                     reszte dorysowuje zakoncz()
 
                 Uzywana w:
-                    app.py, zakladka 3 (linia 399) - dla kazdego kadru; przy True pokazuje mozaike
-                    app.py, zakladka 4 (linia 736) - lot z detekcja
+                    app.py, zakladka 3 - dla kazdego kadru; przy True pokazuje mozaike
+                    app.py, zakladka 4 - lot z detekcja
                     cli.py - polecenia batch / watch / demo
                 """
         img = cv2.imread(str(sciezka))
@@ -903,7 +903,7 @@ class GlobalStitcher:
                     (nie dodany, za malo punktow, odciety od reszty, zla skala)
 
                 Uzywana w:
-                    app.py, zakladka 4 (linia 758) - ramki wykrytych chwastow z kazdego
+                    app.py, zakladka 4 - ramki wykrytych chwastow z kazdego
                     kadru przeniesione na mozaike (rysuj_ramki, GIF lotu)
                 """
         if not self.S:
@@ -940,10 +940,10 @@ class GlobalStitcher:
             False - mozaiki nie ma (za malo kadrow albo _rozwiaz/_renderuj sie nie udaly)
 
         Uzywana w:
-            app.py, zakladka 3 (linia 407) - po petli dodaj(); nowa mozaika trafia
-                                             jako ostatnia klatka do GIF-a
-            app.py, zakladka 4 (linia 749) - tu renderuj_co = 10**6, wiec dodaj()
-                                             nigdy nie rysuje - cala mozaika powstaje tutaj
+            app.py, zakladka 3 - po petli dodaj(); nowa mozaika trafia
+                                jako ostatnia klatka do GIF-a
+            app.py, zakladka 4 - tu renderuj_co = 10**6, wiec dodaj()
+                                nigdy nie rysuje - cala mozaika powstaje tutaj
             cli.py - na koncu batch / watch / demo
         """
         if self._aktualna or len(self.obrazy) < 2:
